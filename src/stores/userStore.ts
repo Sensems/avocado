@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { User, UserState, UserActions } from '../types/user';
+import { User, UserState, UserActions } from '../types/store.type';
 import { persist } from 'zustand/middleware';
 import { authService } from '@/api';
 
@@ -30,11 +30,10 @@ const useUserStore = create<UserStore>()(
 
       login: async (email: string, password: string) => {
         const res = await authService.login({email, password});
-        console.log('res',res)
         set({
           user: res.user,
           isAuthenticated: true,
-          token: res.token,
+          token: res.access_token,
         });
       },    
 

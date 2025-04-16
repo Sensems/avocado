@@ -1,14 +1,15 @@
 import { Sidebar } from './components/Sidebar/Sidebar';
 import useUserStore from '@/stores/userStore';
 import LoginModal from '@/components/LoginModal/LoginModal';
+import ChatView from './components/ChatView/ChatView';
 
 const Home: React.FC = () => {
-  const { isShowLoginPanel, setShowLoginPanel } = useUserStore()
+  const { isShowLoginPanel, setShowLoginPanel } = useUserStore();
   return (
     <div className="flex h-screen css-var-ant">
       <Sidebar />
-      <div className='flex-1'>
-        111
+      <div className="flex-1">
+        <ChatView />
       </div>
 
       <LoginModal
@@ -18,6 +19,6 @@ const Home: React.FC = () => {
       />
     </div>
   );
-}
- 
+};
+
 export default Home;

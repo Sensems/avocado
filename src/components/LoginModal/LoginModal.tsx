@@ -3,6 +3,7 @@ import { LockOutlined, CloseOutlined, MailOutlined } from '@ant-design/icons';
 import { Button, Form, Input, Typography, message, FormProps } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
 import useUserStore from '@/stores/userStore';
+import conversationStore from '@/stores/conversationStore';
 
 interface LoginFormValues {
   username: string;
@@ -17,6 +18,7 @@ interface LoginModalProps {
 
 const LoginModal: React.FC<LoginModalProps> = ({ visible, onClose, onLoginSuccess }) => {
   const { login } = useUserStore()
+  const { getConversationList } = conversationStore()
   const [loading, setLoading] = useState<boolean>(false);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -25,11 +27,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ visible, onClose, onLoginSucces
     setLoading(true);
     try {
       await login(values.username, values.password);
+      getConversationList()
       messageApi.success('欢迎回来');
       onLoginSuccess();
     } catch (error) {
       // messageApi.error('登录失败，请检查凭证');
-      console.log('error',error)
+      console.log('error', error)
     } finally {
       setLoading(false);
     }
@@ -51,14 +54,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ visible, onClose, onLoginSucces
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-lg z-2098"
+            className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-lg z-8"
             onClick={onClose}
           />
-          
-          <div className="fixed inset-0 z-2099 overflow-y-auto">
+
+          <div className="fixed inset-0 z-9 overflow-y-auto">
             {/* 内容部分保持不变 */}
             {contextHolder}
-            
+
             {/* 登录内容 */}
             <div className="flex items-center justify-center min-h-screen p-4">
               <motion.div

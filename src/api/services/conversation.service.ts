@@ -17,7 +17,7 @@ class ConversationService {
    * 获取对话列表
    */
   async findAll() {
-    return http.post<ConversationListResponse>('/conversations/findAll', null, {
+    return http.post<Conversation[]>('/conversations/findAll', undefined, {
       showError: true,
       withToken: true,
     });
@@ -51,7 +51,7 @@ class ConversationService {
    * @param id 对话ID
    */
   async delete(id: string) {
-    return http.post<void>(`/conversations/delete/${id}`, null, {
+    return http.post<void>(`/conversations/delete/${id}`, undefined, {
       showError: true,
       withToken: true,
     });

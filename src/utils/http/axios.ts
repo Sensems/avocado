@@ -75,9 +75,10 @@ const retryRequest = async (config: AxiosRequestConfig, retryConfig: RetryConfig
 instance.interceptors.request.use(
   (config) => {
     // 在这里你可以统一处理token等
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const userStore = localStorage.getItem('user-storage');
+    if (userStore) {
+      const parseUserStore = JSON.parse(userStore);
+      config.headers.Authorization = `Bearer ${parseUserStore.state.token}`;
     }
 
     // 处理重复请求

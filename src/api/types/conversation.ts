@@ -6,7 +6,7 @@ export interface CreateConversationDto {
 
 // 对话信息
 export interface Conversation {
-  id: string;
+  _id: string;
   title: string;
   description?: string;
   createdAt: string;

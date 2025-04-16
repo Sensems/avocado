@@ -6,7 +6,7 @@ export interface LoginUserDto {
 
 // 登录响应
 export interface LoginResponse {
-  token: string;
+  access_token: string;
   user: {
     id: number;
     username: string;

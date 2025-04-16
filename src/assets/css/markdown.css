@@ -1,0 +1,156 @@
+/* Markdown 基本样式 */
+.markdown-content {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  color: inherit;
+  font-size: 16px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.markdown-content h1 {
+  font-size: 2em;
+}
+.markdown-content h2 {
+  font-size: 1.5em;
+}
+.markdown-content h3 {
+  font-size: 1.25em;
+}
+.markdown-content h4 {
+  font-size: 1em;
+}
+.markdown-content h5 {
+  font-size: 0.875em;
+}
+.markdown-content h6 {
+  font-size: 0.85em;
+}
+
+.markdown-content p {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+.markdown-content a {
+  color: #0366d6;
+  text-decoration: none;
+}
+
+.markdown-content a:hover {
+  text-decoration: underline;
+}
+
+.markdown-content code {
+  font-family: SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  padding: 0.2em 0.4em;
+  margin: 0;
+  font-size: 85%;
+  background-color: rgba(27, 31, 35, 0.05);
+  border-radius: 10px;
+}
+
+.markdown-content pre {
+  margin-top: 0;
+  margin-bottom: 1em;
+  padding: 16px;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  border-radius: 3px;
+}
+
+.markdown-content pre code {
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+}
+
+.markdown-content blockquote {
+  margin: 0 0 1em;
+  padding: 0 1em;
+  color: #6a737d;
+  border-left: 0.25em solid #dfe2e5;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 2em;
+  margin-top: 0;
+  margin-bottom: 1em;
+  list-style: inherit !important;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+  padding: 6px 13px;
+  border: 1px solid #dfe2e5;
+}
+
+.markdown-content table tr {
+  background-color: #fff;
+  border-top: 1px solid #c6cbd1;
+}
+
+.markdown-content table tr:nth-child(2n) {
+  background-color: #f6f8fa;
+}
+
+/* 适配深色主题的代码块 */
+.markdown-content .hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0.5em;
+  border-radius: 10px;
+}
+
+/* 针对深色背景的文本颜色调整 */
+.bg-blue-500 .markdown-content {
+  color: white;
+}
+
+.bg-blue-500 .markdown-content a {
+  color: #a8d1ff;
+}
+
+.bg-blue-500 .markdown-content blockquote {
+  color: #e1e1e1;
+  border-left-color: #6b7280;
+}
+
+.bg-blue-500 .markdown-content code {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 代码块容器需要相对定位 */
+pre {
+  position: relative;
+  padding-top: 30px !important;
+}
+
+.code-header {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #404045;
+  font-size: 12px;
+  padding: 5px 10px;
+  color: #f1f1f1;
+}

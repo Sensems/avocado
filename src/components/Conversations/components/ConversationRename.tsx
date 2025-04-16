@@ -2,7 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import type { InputRef } from 'antd';
 import { Input } from 'antd';
 import { ConversationRenameProps } from '../types';
-import siderModules from '../Sidebar.module.scss';
+import conversationsModule from '../conversations.module.scss';
 
 export const ConversationRename: React.FC<ConversationRenameProps> = ({
   item,
@@ -18,14 +18,14 @@ export const ConversationRename: React.FC<ConversationRenameProps> = ({
   }, []);
 
   return (
-    <div className={`${siderModules.conversationRenameView}`}>
-      <Input 
+    <div className={`${conversationsModule.conversationRenameView}`}>
+      <Input
         ref={inputRef}
-        classNames={{ 
+        classNames={{
           input: '!text-15px'
-        }} 
-        variant="borderless" 
-        value={item.label} 
+        }}
+        variant="borderless"
+        value={item.title}
         onBlur={onBlur}
         onChange={onChange}
       />
