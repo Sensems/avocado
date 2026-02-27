@@ -14,7 +14,7 @@ export class ImRobotsController {
   constructor(private readonly imRobotsService: ImRobotsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Add a new IM Robot (webhook & optional secret)' })
+  @ApiOperation({ summary: '添加新的 IM 机器人（webhook 和可选密钥）' })
   create(@Body() createDto: CreateImRobotDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -22,19 +22,19 @@ export class ImRobotsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all IM Robots' })
+  @ApiOperation({ summary: '获取所有 IM 机器人列表' })
   findAll() {
     return this.imRobotsService.findAll();
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete an IM Robot config' })
+  @ApiOperation({ summary: '删除 IM 机器人配置' })
   remove(@Param('id') id: string) {
     return this.imRobotsService.remove(id);
   }
 
   @Post(':id/test')
-  @ApiOperation({ summary: 'Send a test message to the specified IM Robot platform' })
+  @ApiOperation({ summary: '发送测试消息以验证 IM 机器人连通性' })
   testConnection(@Param('id') id: string) {
     return this.imRobotsService.testConnection(id);
   }

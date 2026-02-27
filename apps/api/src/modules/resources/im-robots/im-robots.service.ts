@@ -29,7 +29,7 @@ export class ImRobotsService {
         id: true,
         name: true,
         platform: true,
-        webhookUrl: true, // We format webhooks mostly clear text as it's common practice, but secretToken is hidden
+        webhookUrl: true, // webhookURL 通常以明文形式保存，但 secretToken 已隐藏
         createdAt: true,
         createdById: true,
       },
@@ -52,7 +52,7 @@ export class ImRobotsService {
 
   async remove(id: string) {
     const robot = await this.prisma.imRobot.findUnique({ where: { id } });
-    if (!robot) throw new NotFoundException('IM Robot not found');
+    if (!robot) throw new NotFoundException('找不到 IM 机器人');
 
     await this.prisma.imRobot.delete({ where: { id } });
     return { success: true };
@@ -101,7 +101,7 @@ export class ImRobotsService {
     sign?: string,
     timestamp?: string | number,
   ): Record<string, any> {
-    const fullText = linkUrl ? `${content}\n[View Details](${linkUrl})` : content;
+    const fullText = linkUrl ? `${content}\n[查看详情](${linkUrl})` : content;
     switch (platform) {
       case ImPlatform.wecom:
         return { msgtype: 'markdown', markdown: { content: `**${title}**\n${fullText}` } };
@@ -113,7 +113,7 @@ export class ImRobotsService {
       case ImPlatform.feishu: {
         const contentArray: any[] = [[{ tag: 'text', text: content }]];
         if (linkUrl) {
-          contentArray.push([{ tag: 'a', text: 'View QR/Details', href: linkUrl }]);
+          contentArray.push([{ tag: 'a', text: '查看二维码/详情', href: linkUrl }]);
         }
 
         const feishuBody: any = {
@@ -141,18 +141,18 @@ export class ImRobotsService {
 
   async testConnection(id: string) {
     const robot = await this.prisma.imRobot.findUnique({ where: { id } });
-    if (!robot) throw new NotFoundException('IM Robot not found');
+    if (!robot) throw new NotFoundException('找不到 IM 机器人');
 
     try {
       const { finalUrl, payload } = this.buildWebhookMessage(
         robot,
         'Avocado CI/CD',
-        'Connection Test Successful 🥑',
+        '连接测试成功 🥑',
       );
       await axios.post(finalUrl, payload);
-      return { success: true, message: 'Test message sent successfully' };
+      return { success: true, message: '测试消息发送成功' };
     } catch (error) {
-      throw new BadRequestException(`Failed to send test message: ${(error as Error).message}`);
+      throw new BadRequestException(`测试消息发送失败: ${(error as Error).message}`);
     }
   }
 }

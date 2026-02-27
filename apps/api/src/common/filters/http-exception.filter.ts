@@ -11,10 +11,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException ? exception.message : 'Internal server error';
+    const message = exception instanceof HttpException ? exception.message : '内部服务器错误';
 
-    // To extract validation errors from class-validator if any
+    // 提取 class-validator 的验证错误（如果有）
     const exceptionResponse = exception instanceof HttpException ? exception.getResponse() : null;
 
     let errorDetails: string | string[] | null = null;

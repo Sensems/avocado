@@ -14,7 +14,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, Response<T>> 
     return next.handle().pipe(
       map((data: any) => ({
         code: 200,
-        message: 'success',
+        message: '操作成功',
         data: data as T,
       })),
     );

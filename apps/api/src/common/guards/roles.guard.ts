@@ -23,13 +23,13 @@ export class RolesGuard implements CanActivate {
     const user = (request as any).user as User;
 
     if (!user) {
-      throw new ForbiddenException('User object missing in request, make sure AuthGuard is active');
+      throw new ForbiddenException('请求中缺少用户对象，请确保 AuthGuard 已激活');
     }
 
     if (user.isSuperAdmin) {
       return true;
     }
 
-    throw new ForbiddenException('Super Admin privileges required');
+    throw new ForbiddenException('需要超级管理员权限');
   }
 }

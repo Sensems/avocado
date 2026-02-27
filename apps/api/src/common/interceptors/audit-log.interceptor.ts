@@ -16,12 +16,12 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     const user = (request as any).user;
 
-    // Do not block the request for audit logging. We log after it completes or just log the intent.
+    // 不要阻塞审计日志的请求。我们在请求完成后记录，或仅记录意图。
 
     return next.handle().pipe(
       tap(() => {
         if (user && method !== 'GET') {
-          // Typically audit mutative actions
+          // 通常只审计修改类操作
           this.prisma.auditLog
             .create({
               data: {
@@ -33,7 +33,7 @@ export class AuditLogInterceptor implements NestInterceptor {
               },
             })
             .catch((error) => {
-              console.error('Failed to write audit log', error);
+              console.error('写入审计日志失败', error);
             });
         }
       }),

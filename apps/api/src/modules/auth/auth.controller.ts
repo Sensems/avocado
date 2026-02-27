@@ -21,7 +21,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login user and get JWT token' })
+  @ApiOperation({ summary: '用户登录并获取 JWT 令牌' })
   login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
@@ -29,7 +29,7 @@ export class AuthController {
   @Get('profile')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get current logged in user profile' })
+  @ApiOperation({ summary: '获取当前登录用户信息' })
   getProfile(@Request() req: { user: User }) {
     return req.user;
   }

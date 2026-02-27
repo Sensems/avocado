@@ -23,7 +23,7 @@ export class ProjectGuard implements CanActivate {
     );
 
     if (!requiredRoles || requiredRoles.length === 0) {
-      return true; // No project roles required
+      return true; // 不需要项目角色
     }
 
     const request = context.switchToHttp().getRequest<Request>();
@@ -36,15 +36,15 @@ export class ProjectGuard implements CanActivate {
       (request.query as any)?.projectId;
 
     if (!user) {
-      throw new ForbiddenException('User authentication required');
+      throw new ForbiddenException('需要用户认证');
     }
 
     if (user.isSuperAdmin) {
-      return true; // Super Admins bypass project role checks
+      return true; // 超级管理员跳过项目角色检查
     }
 
     if (!projectId) {
-      throw new ForbiddenException('Project ID is required to verify access');
+      throw new ForbiddenException('需要项目 ID 来验证访问权限');
     }
 
     const member = await this.prisma.projectMember.findFirst({
@@ -55,11 +55,11 @@ export class ProjectGuard implements CanActivate {
     });
 
     if (!member) {
-      throw new ForbiddenException('You are not a member of this project');
+      throw new ForbiddenException('您不是该项目的成员');
     }
 
     if (!requiredRoles.includes(member.role)) {
-      throw new ForbiddenException(`Requires one of the follow roles: ${requiredRoles.join(', ')}`);
+      throw new ForbiddenException(`需要以下角色之一: ${requiredRoles.join(', ')}`);
     }
 
     return true;

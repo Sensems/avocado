@@ -25,7 +25,7 @@ export class UsersService implements OnModuleInit {
           isSuperAdmin: true,
         },
       });
-      console.log('Default super admin created username: admin, password: admin123');
+      console.log('默认超级管理员已创建，用户名: admin，密码: admin123');
     }
   }
 
@@ -34,7 +34,7 @@ export class UsersService implements OnModuleInit {
       where: { username: createUserDto.username },
     });
     if (existing) {
-      throw new ConflictException('Username already exists');
+      throw new ConflictException('用户名已存在');
     }
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
     const user = await this.prisma.user.create({
@@ -55,7 +55,7 @@ export class UsersService implements OnModuleInit {
   async findById(id: string): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('用户不存在');
     }
     return user;
   }

@@ -29,16 +29,18 @@ async function bootstrap() {
   await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
-  // Swagger Configuration
+  // Swagger 配置
   const config = new DocumentBuilder()
     .setTitle('Avocado CI/CD API')
-    .setDescription('Mini Program Private CI/CD Backend API Documentation')
+    .setDescription('小程序私有化 CI/CD 后端 API 文档')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document, {
+    jsonDocumentUrl: 'api/docs/swagger.json',
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }

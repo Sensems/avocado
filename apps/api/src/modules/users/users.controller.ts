@@ -10,25 +10,25 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create new user' })
+  @ApiOperation({ summary: '创建新用户' })
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all users' })
+  @ApiOperation({ summary: '获取所有用户列表' })
   findAll() {
     return this.usersService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Find user by ID' })
+  @ApiOperation({ summary: '根据 ID 查找用户' })
   findOne(@Param('id') id: string) {
     return this.usersService.findById(id);
   }
 
   @Put(':id/status')
-  @ApiOperation({ summary: 'Update user status (active/disabled)' })
+  @ApiOperation({ summary: '更新用户状态 (启用/禁用)' })
   updateStatus(@Param('id') id: string, @Body('status') status: 'active' | 'disabled') {
     return this.usersService.updateStatus(id, status);
   }

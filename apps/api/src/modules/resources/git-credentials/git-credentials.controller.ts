@@ -14,7 +14,7 @@ export class GitCredentialsController {
   constructor(private readonly gitCredentialsService: GitCredentialsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Add a new Git credential (stored securely via AES)' })
+  @ApiOperation({ summary: '添加新的 Git 凭证（通过 AES 安全存储）' })
   create(@Body() createDto: CreateGitCredentialDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -22,19 +22,19 @@ export class GitCredentialsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all available Git credentials (secrets obfuscated)' })
+  @ApiOperation({ summary: '获取所有可用的 Git 凭证列表（密钥已混淆）' })
   findAll() {
     return this.gitCredentialsService.findAll();
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a Git credential' })
+  @ApiOperation({ summary: '删除 Git 凭证' })
   remove(@Param('id') id: string) {
     return this.gitCredentialsService.remove(id);
   }
 
   @Post(':id/test')
-  @ApiOperation({ summary: 'Test credential connectivity via git ls-remote' })
+  @ApiOperation({ summary: '通过 git ls-remote 测试凭证连通性' })
   @ApiBody({
     schema: {
       type: 'object',

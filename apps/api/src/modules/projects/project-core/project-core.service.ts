@@ -9,27 +9,27 @@ export class ProjectCoreService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createDto: CreateProjectDto, user: User) {
-    // Check if project name exists
+    // 检查项目名称是否存在
     const existing = await this.prisma.project.findFirst({ where: { name: createDto.name } });
     if (existing) {
-      throw new ConflictException('Project name already exists');
+      throw new ConflictException('项目名称已存在');
     }
 
     return await this.prisma.$transaction(async (tx) => {
-      // Create the project
+      // 创建项目
       const project = await tx.project.create({
         data: {
           name: createDto.name,
           appId: createDto.appId ?? null,
           repoUrl: createDto.repositoryUrl,
-          gitCredentialId: createDto.gitCredentialId as string, // Assuming it's validated or defaults
+          gitCredentialId: createDto.gitCredentialId as string, // 假设已经过验证或使用默认值
           privateKey: createDto.privateKey ?? null,
           imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
           framework: createDto.framework ?? FrameworkType.native,
         },
       });
 
-      // Assign the creator as the maintainer
+      // 将创建者指定为维护者
       await tx.projectMember.create({
         data: {
           projectId: project.id,
@@ -43,7 +43,7 @@ export class ProjectCoreService {
   }
 
   async findAll(user: User) {
-    // SuperAdmins see all projects, others only see projects they are members of
+    // 超级管理员可见所有项目，其他用户只可见其所属的项目
     if (user.isSuperAdmin) {
       return await this.prisma.project.findMany({
         orderBy: { createdAt: 'desc' },
@@ -76,25 +76,25 @@ export class ProjectCoreService {
     });
 
     if (!project) {
-      throw new NotFoundException('Project not found');
+      throw new NotFoundException('项目不存在');
     }
 
     return project;
   }
 
   async remove(id: string) {
-    await this.findOne(id); // Check existence
+    await this.findOne(id); // 检查是否存在
     await this.prisma.project.delete({ where: { id } });
     return { success: true };
   }
 
-  // --- Project Member Management ---
+  // --- 项目成员管理 ---
 
   async addMember(projectId: string, dto: AddProjectMemberDto) {
     await this.findOne(projectId);
 
     const existingUser = await this.prisma.user.findUnique({ where: { id: dto.userId } });
-    if (!existingUser) throw new NotFoundException('User not found');
+    if (!existingUser) throw new NotFoundException('用户不存在');
 
     const existingMembership = await this.prisma.projectMember.findUnique({
       where: {
@@ -103,7 +103,7 @@ export class ProjectCoreService {
     });
 
     if (existingMembership) {
-      throw new ConflictException('User is already a member of this project');
+      throw new ConflictException('该用户已是该项目的成员');
     }
 
     return await this.prisma.projectMember.create({
@@ -122,7 +122,7 @@ export class ProjectCoreService {
       },
     });
 
-    if (!membership) throw new NotFoundException('Membership not found');
+    if (!membership) throw new NotFoundException('未找到成员关系');
 
     await this.prisma.projectMember.delete({
       where: {
@@ -139,7 +139,7 @@ export class ProjectCoreService {
       },
     });
 
-    if (!membership) throw new NotFoundException('Membership not found');
+    if (!membership) throw new NotFoundException('未找到成员关系');
 
     return await this.prisma.projectMember.update({
       where: {

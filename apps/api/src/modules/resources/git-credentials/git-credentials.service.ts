@@ -53,7 +53,7 @@ export class GitCredentialsService {
 
   async remove(id: string) {
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
-    if (!credential) throw new NotFoundException('Credential not found');
+    if (!credential) throw new NotFoundException('凭证不存在');
 
     await this.prisma.gitCredential.delete({ where: { id } });
     return { success: true };
@@ -61,19 +61,19 @@ export class GitCredentialsService {
 
   async findDecryptedSecret(id: string): Promise<string> {
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
-    if (!credential) throw new NotFoundException('Credential not found');
+    if (!credential) throw new NotFoundException('凭证不存在');
 
     return decrypt(credential.secret);
   }
 
   async testConnection(id: string, testUrl: string) {
     /**
-     * In a real CI/CD scenario, we'll write the SSH key to a temp file,
-     * use `GIT_SSH_COMMAND` to run `git ls-remote`, then delete the file.
-     * Or if HTTPS, use username:token attached to URL.
+     * 在真实的 CI/CD 场景中，我们会将 SSH 密钥写入临时文件，
+     * 使用 `GIT_SSH_COMMAND` 运行 `git ls-remote`，然后删除该文件。
+     * 如果是 HTTPS，则在 URL 中附加 username:token。
      */
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
-    if (!credential) throw new NotFoundException('Credential not found');
+    if (!credential) throw new NotFoundException('凭证不存在');
 
     const plainSecret = decrypt(credential.secret);
 
@@ -84,24 +84,24 @@ export class GitCredentialsService {
         const { stdout } = await execAsync(
           `GIT_SSH_COMMAND="ssh -i ${keyPath} -o StrictHostKeyChecking=no" git ls-remote ${testUrl}`,
         );
-        return { success: true, message: 'Connection successful', details: stdout.split('\n')[0] };
+        return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
       } catch (error) {
-        throw new BadRequestException(`SSH Test Failed: ${(error as Error).message}`);
+        throw new BadRequestException(`SSH 测试失败: ${(error as Error).message}`);
       } finally {
         await unlink(keyPath).catch(() => {});
       }
     } else {
-      // HTTPS
+      // HTTPS 方式
       const urlWithCreds = testUrl.replace(
         'https://',
         `https://${credential.username}:${plainSecret}@`,
       );
       try {
-        // Run git ls-remote to verify
+        // 运行 git ls-remote 进行验证
         const { stdout } = await execAsync(`git ls-remote ${urlWithCreds}`);
-        return { success: true, message: 'Connection successful', details: stdout.split('\n')[0] };
+        return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
       } catch (error) {
-        throw new BadRequestException(`HTTPS Test Failed: ${(error as Error).message}`);
+        throw new BadRequestException(`HTTPS 测试失败: ${(error as Error).message}`);
       }
     }
   }

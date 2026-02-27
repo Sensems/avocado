@@ -28,7 +28,7 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const user = await this.validateUser(loginDto.username, loginDto.password);
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials or account disabled');
+      throw new UnauthorizedException('凭证无效或账号已禁用');
     }
     const payload = { username: user.username, sub: user.id };
     return {

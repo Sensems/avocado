@@ -4,33 +4,33 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateGitCredentialDto {
   @ApiProperty({
-    description: 'The name of the credential for reference',
+    description: '凭证名称（用于引用）',
     example: 'My Personal SSH Key',
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
+  @IsString({ message: '名称必须是字符串' })
+  @IsNotEmpty({ message: '名称不能为空' })
+  @MaxLength(100, { message: '名称不能超过100个字符' })
   name!: string;
 
-  @ApiProperty({ enum: GitCredentialType, description: 'Type of credential (ssh or https)' })
-  @IsEnum(GitCredentialType)
-  @IsNotEmpty()
+  @ApiProperty({ enum: GitCredentialType, description: '凭证类型（ssh 或 https）' })
+  @IsEnum(GitCredentialType, { message: '凭证类型无效' })
+  @IsNotEmpty({ message: '凭证类型不能为空' })
   type!: GitCredentialType;
 
   @ApiPropertyOptional({
-    description: 'Username for HTTPS, not required for SSH',
+    description: 'HTTPS 用户名，SSH 不需要',
     example: 'git-user',
   })
-  @IsString()
+  @IsString({ message: '用户名必须是字符串' })
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(100, { message: '用户名不能超过100个字符' })
   username?: string;
 
   @ApiProperty({
-    description: 'The actual secret (Private Key or Password/Token)',
+    description: '实际的密钥内容（私钥或密码/Token）',
     example: '-----BEGIN OPENSSH PRIVATE KEY-----...',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsString({ message: '密钥内容必须是字符串' })
+  @IsNotEmpty({ message: '密钥内容不能为空' })
   secret!: string;
 }

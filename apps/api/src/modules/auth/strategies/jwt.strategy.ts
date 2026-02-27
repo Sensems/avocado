@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: { sub: string; username: string }) {
     const user = await this.usersService.findById(payload.sub);
     if (!user || user.status === 'disabled') {
-      throw new UnauthorizedException('User is disabled or does not exist');
+      throw new UnauthorizedException('用户已禁用或不存在');
     }
     return user;
   }

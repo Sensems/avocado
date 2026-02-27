@@ -26,7 +26,7 @@ export class ProjectCoreController {
   constructor(private readonly projectCoreService: ProjectCoreService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new project (assigns creator as maintainer)' })
+  @ApiOperation({ summary: '创建新项目（将创建者指定为维护者）' })
   create(@Body() createDto: CreateProjectDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -34,7 +34,7 @@ export class ProjectCoreController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List projects (SuperAdmin sees all, others see joined)' })
+  @ApiOperation({ summary: '获取项目列表（超级管理员可见所有，其他可见已加入）' })
   findAll(@Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -42,30 +42,30 @@ export class ProjectCoreController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get project details including members and settings' })
+  @ApiOperation({ summary: '获取项目详情（包含成员和设置）' })
   findOne(@Param('id') id: string) {
     return this.projectCoreService.findOne(id);
   }
 
   @Delete(':id')
   @UseGuards(ProjectGuard) // Re-uses our dynamic ProjectGuard mechanism
-  @ApiOperation({ summary: 'Delete project (Requires Maintainer role)' })
+  @ApiOperation({ summary: '删除项目（需要维护者角色）' })
   remove(@Param('id') id: string) {
     return this.projectCoreService.remove(id);
   }
 
-  // --- Member Management ---
+  // --- 成员管理 ---
 
   @Post(':id/members')
   @UseGuards(ProjectGuard)
-  @ApiOperation({ summary: 'Add a user to the project with a specific role (Requires Maintainer)' })
+  @ApiOperation({ summary: '将用户添加到项目并指定角色（需要维护者）' })
   addMember(@Param('id') id: string, @Body() dto: AddProjectMemberDto) {
     return this.projectCoreService.addMember(id, dto);
   }
 
   @Put(':id/members/:userId')
   @UseGuards(ProjectGuard)
-  @ApiOperation({ summary: 'Change the role of an existing project member (Requires Maintainer)' })
+  @ApiOperation({ summary: '修改项目成员角色（需要维护者）' })
   updateMemberRole(
     @Param('id') id: string,
     @Param('userId') userId: string,
@@ -76,7 +76,7 @@ export class ProjectCoreController {
 
   @Delete(':id/members/:userId')
   @UseGuards(ProjectGuard)
-  @ApiOperation({ summary: 'Remove a user from the project (Requires Maintainer)' })
+  @ApiOperation({ summary: '移除项目成员（需要维护者）' })
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.projectCoreService.removeMember(id, userId);
   }
