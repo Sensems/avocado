@@ -3,12 +3,17 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
 import { User, ProjectRole, Prisma, FrameworkType } from '@prisma/client';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 @Injectable()
 export class ProjectCoreService {
+  /** 密钥文件存储目录 */
+  private readonly privateKeysDir = path.join(process.cwd(), 'private-keys');
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createDto: CreateProjectDto, user: User) {
+  async create(createDto: CreateProjectDto, user: User, file?: Express.Multer.File) {
     // 检查项目名称是否存在
     const existing = await this.prisma.project.findFirst({ where: { name: createDto.name } });
     if (existing) {
@@ -22,12 +27,23 @@ export class ProjectCoreService {
           name: createDto.name,
           appId: createDto.appId ?? null,
           repoUrl: createDto.repositoryUrl,
-          gitCredentialId: createDto.gitCredentialId as string, // 假设已经过验证或使用默认值
-          privateKey: createDto.privateKey ?? null,
+          gitCredentialId: createDto.gitCredentialId as string,
           imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
           framework: createDto.framework ?? FrameworkType.native,
         },
       });
+
+      // 若上传了密钥文件，保存到磁盘并更新记录
+      if (file) {
+        await fs.mkdir(this.privateKeysDir, { recursive: true });
+        const keyFilePath = path.join(this.privateKeysDir, `${project.id}.key`);
+        await fs.writeFile(keyFilePath, file.buffer);
+
+        await tx.project.update({
+          where: { id: project.id },
+          data: { privateKeyPath: keyFilePath },
+        });
+      }
 
       // 将创建者指定为维护者
       await tx.projectMember.create({

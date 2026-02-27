@@ -33,14 +33,6 @@ export class CreateProjectDto {
   @IsOptional()
   gitCredentialId?: string;
 
-  @ApiPropertyOptional({
-    description: '用于微信小程序上传的私钥内容',
-    example: '-----BEGIN RSA PRIVATE KEY-----\n...',
-  })
-  @IsString({ message: '私钥必须是字符串' })
-  @IsOptional()
-  privateKey?: string;
-
   @ApiPropertyOptional({ description: '用于接收构建通知的 IM 机器人 ID 数组' })
   @IsArray({ message: 'IM 机器人 ID 必须是数组' })
   @IsUUID('all', { each: true, message: 'IM 机器人 ID 必须是有效的 UUID' })

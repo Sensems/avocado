@@ -8,11 +8,16 @@ import {
   UseGuards,
   Request,
   Put,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ProjectCoreService } from './project-core.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ProjectGuard } from '../../../common/guards/project.guard';
 import { User, ProjectRole } from '@prisma/client';
@@ -27,10 +32,48 @@ export class ProjectCoreController {
 
   @Post()
   @ApiOperation({ summary: '创建新项目（将创建者指定为维护者）' })
-  create(@Body() createDto: CreateProjectDto, @Request() req: ExpressRequest) {
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: '创建项目，可选上传私钥文件',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '项目名称' },
+        appId: { type: 'string', description: '小程序 App ID' },
+        repositoryUrl: { type: 'string', description: 'Git 仓库地址' },
+        gitCredentialId: { type: 'string', description: 'Git 凭证 ID' },
+        imRobotIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'IM 机器人 ID 数组',
+        },
+        framework: { type: 'string', enum: ['native', 'uniapp'], description: '框架类型' },
+        privateKeyFile: {
+          type: 'string',
+          format: 'binary',
+          description: '微信小程序上传密钥文件 (.key)',
+        },
+      },
+      required: ['name', 'repositoryUrl'],
+    },
+  })
+  @UseInterceptors(FileInterceptor('privateKeyFile'))
+  create(
+    @Body() createDto: CreateProjectDto,
+    @Request() req: ExpressRequest,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 }), // 10KB 足够密钥文件
+        ],
+        fileIsRequired: false,
+      }),
+    )
+    file?: Express.Multer.File,
+  ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
-    return this.projectCoreService.create(createDto, user);
+    return this.projectCoreService.create(createDto, user, file);
   }
 
   @Get()

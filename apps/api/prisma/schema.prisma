@@ -74,7 +74,7 @@ model Project {
   framework      FrameworkType @default(native)
   buildCommand   String?       @map("build_command") @db.VarChar(255)
   distPath       String?       @map("dist_path") @db.VarChar(255)
-  privateKey     String?       @map("private_key") @db.Text 
+  privateKeyPath String?       @map("private_key_path") @db.VarChar(500)
   retentionCount Int           @default(10) @map("retention_count")
   imRobotIds     Json?         @map("im_robot_ids") // Array of ImRobot IDs
   createdAt      DateTime      @default(now()) @map("created_at")
