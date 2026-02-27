@@ -1,0 +1,175 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalStatus {
+  active
+  disabled
+}
+
+enum ProjectRole {
+  maintainer
+  developer
+  guest
+}
+
+enum FrameworkType {
+  native
+  uniapp
+}
+
+enum GitCredentialType {
+  ssh
+  https
+}
+
+enum ImPlatform {
+  wecom
+  dingtalk
+  feishu
+}
+
+enum TaskStatus {
+  pending
+  running
+  success
+  failed
+  canceled
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  username     String       @unique @db.VarChar(100)
+  passwordHash String       @map("password_hash") @db.VarChar(255)
+  isSuperAdmin Boolean      @default(false) @map("is_super_admin")
+  status       GlobalStatus @default(active)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  projectMembers ProjectMember[]
+  credentials    GitCredential[]
+  imRobots       ImRobot[]
+  triggeredTasks BuildTask[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Project {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String        @db.VarChar(100)
+  appId          String?       @map("app_id") @db.VarChar(50)
+  repoUrl        String        @map("repo_url") @db.VarChar(255)
+  framework      FrameworkType @default(native)
+  buildCommand   String?       @map("build_command") @db.VarChar(255)
+  distPath       String?       @map("dist_path") @db.VarChar(255)
+  privateKey     String?       @map("private_key") @db.Text 
+  retentionCount Int           @default(10) @map("retention_count")
+  imRobotIds     Json?         @map("im_robot_ids") // Array of ImRobot IDs
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  gitCredentialId String        @map("git_credential_id") @db.Uuid
+  gitCredential   GitCredential @relation(fields: [gitCredentialId], references: [id])
+
+  members    ProjectMember[]
+  buildTasks BuildTask[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid()) @db.Uuid
+  role      ProjectRole @default(developer)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  projectId String @map("project_id") @db.Uuid
+  userId    String @map("user_id") @db.Uuid
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model GitCredential {
+  id        String            @id @default(uuid()) @db.Uuid
+  name      String            @db.VarChar(100)
+  type      GitCredentialType
+  username  String?           @db.VarChar(100)
+  secret    String            @db.Text // AES Encrypted
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  createdById String @map("created_by") @db.Uuid
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  projects Project[]
+
+  @@map("git_credentials")
+}
+
+model ImRobot {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String     @db.VarChar(100)
+  platform    ImPlatform
+  webhookUrl  String     @map("webhook_url") @db.Text
+  secretToken String?    @map("secret_token") @db.VarChar(255) // AES Encrypted
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  createdById String @map("created_by") @db.Uuid
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  @@map("im_robots")
+}
+
+model BuildTask {
+  id           BigInt     @id @default(autoincrement())
+  status       TaskStatus @default(pending)
+  robotId      Int?       @map("robot_id") // 1-30, assigned by scheduler
+  version      String?    @db.VarChar(50)
+  branch       String     @default("main") @db.VarChar(100)
+  desc         String?    @db.Text
+  commitHash   String?    @map("commit_hash") @db.VarChar(40)
+  logPath      String?    @map("log_path") @db.Text
+  artifactPath String?    @map("artifact_path") @db.Text
+  qrcodePath   String?    @map("qrcode_path") @db.Text
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  projectId String  @map("project_id") @db.Uuid
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  triggerUserId String @map("trigger_user_id") @db.Uuid
+  triggerUser   User   @relation(fields: [triggerUserId], references: [id])
+
+  @@map("build_tasks")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  action    String   @db.VarChar(100) // e.g., UPDATE_PROJECT, DELETE_USER
+  targetId  String?  @map("target_id") @db.VarChar(255)
+  changes   Json?    @db.Json
+  ipAddress String?  @map("ip_address") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
