@@ -4,6 +4,7 @@ build/
 .env*
 !.env.example
 .DS_Store
+**/public/storage/
 
 # Editor directories and files
 .vscode/*

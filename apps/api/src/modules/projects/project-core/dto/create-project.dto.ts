@@ -40,6 +40,24 @@ export class CreateProjectDto {
   imRobotIds?: string[];
 
   @ApiPropertyOptional({
+    description: '构建命令（UniApp 项目必填）',
+    example: 'npm run build:mp-weixin',
+  })
+  @IsString({ message: '构建命令必须是字符串' })
+  @IsOptional()
+  @MaxLength(255, { message: '构建命令不能超过255个字符' })
+  buildCommand?: string;
+
+  @ApiPropertyOptional({
+    description: '构建产物目录（UniApp 项目必填）',
+    example: 'dist/build/mp-weixin',
+  })
+  @IsString({ message: '产物目录必须是字符串' })
+  @IsOptional()
+  @MaxLength(255, { message: '产物目录不能超过255个字符' })
+  distPath?: string;
+
+  @ApiPropertyOptional({
     description: '框架类型',
     enum: FrameworkType,
     default: FrameworkType.native,

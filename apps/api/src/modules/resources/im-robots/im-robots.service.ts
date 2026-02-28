@@ -63,6 +63,7 @@ export class ImRobotsService {
     title: string,
     content: string,
     linkUrl?: string,
+    imageUrl?: string,
   ): { finalUrl: string; payload: Record<string, any> } {
     let timestamp: string | number = '';
     let sign = '';
@@ -89,6 +90,7 @@ export class ImRobotsService {
       linkUrl,
       sign,
       timestamp,
+      imageUrl,
     );
     return { finalUrl, payload };
   }
@@ -100,19 +102,42 @@ export class ImRobotsService {
     linkUrl?: string,
     sign?: string,
     timestamp?: string | number,
+    imageUrl?: string,
   ): Record<string, any> {
     const fullText = linkUrl ? `${content}\n[查看详情](${linkUrl})` : content;
+    const imageMarkdown = imageUrl ? `\n![体验版二维码](${imageUrl})` : '';
     switch (platform) {
       case ImPlatform.wecom:
+        if (imageUrl) {
+          // 企业微信使用 news 卡片消息以展示图片
+          return {
+            msgtype: 'news',
+            news: {
+              articles: [
+                {
+                  title: title,
+                  description: content,
+                  url: linkUrl || imageUrl,
+                  picurl: imageUrl,
+                },
+              ],
+            },
+          };
+        }
         return { msgtype: 'markdown', markdown: { content: `**${title}**\n${fullText}` } };
       case ImPlatform.dingtalk:
         return {
           msgtype: 'markdown',
-          markdown: { title: title, text: `### ${title}\n${fullText}` },
+          markdown: {
+            title: title,
+            text: `### ${title}\n${fullText}${imageMarkdown}`,
+          },
         };
       case ImPlatform.feishu: {
         const contentArray: any[] = [[{ tag: 'text', text: content }]];
-        if (linkUrl) {
+        if (imageUrl) {
+          contentArray.push([{ tag: 'a', text: '📱 查看体验版二维码', href: imageUrl }]);
+        } else if (linkUrl) {
           contentArray.push([{ tag: 'a', text: '查看二维码/详情', href: linkUrl }]);
         }
 
