@@ -17,6 +17,7 @@ import { RobotPoolModule } from './modules/build/robot-pool/robot-pool.module';
 import { BuildTasksModule } from './modules/build/build-tasks/build-tasks.module';
 import { WsModule } from './modules/ws/ws.module';
 import { ArtifactsModule } from './modules/build/artifacts/artifacts.module';
+import { AuditLogsModule } from './modules/resources/audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ArtifactsModule } from './modules/build/artifacts/artifacts.module';
     BuildTasksModule,
     WsModule,
     ArtifactsModule,
+    AuditLogsModule,
   ],
   controllers: [AppController],
   providers: [

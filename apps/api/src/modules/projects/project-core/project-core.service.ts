@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
 import { User, ProjectRole, Prisma, FrameworkType } from '@prisma/client';
 import * as path from 'path';
@@ -58,19 +59,35 @@ export class ProjectCoreService {
     });
   }
 
-  async findAll(user: User) {
+  async findAll(user: User, page: number = 1, limit: number = 15) {
+    const skip = (page - 1) * limit;
+
     // 超级管理员可见所有项目，其他用户只可见其所属的项目
     if (user.isSuperAdmin) {
-      return await this.prisma.project.findMany({
-        orderBy: { createdAt: 'desc' },
-      });
+      const [items, total] = await Promise.all([
+        this.prisma.project.findMany({
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.project.count(),
+      ]);
+      return { items, total };
     } else {
-      const memberships = await this.prisma.projectMember.findMany({
-        where: { userId: user.id },
-        include: { project: true },
-        orderBy: { project: { createdAt: 'desc' } },
-      });
-      return memberships.map((m) => ({ ...m.project, myRole: m.role }));
+      const [memberships, total] = await Promise.all([
+        this.prisma.projectMember.findMany({
+          where: { userId: user.id },
+          include: { project: true },
+          orderBy: { project: { createdAt: 'desc' } },
+          skip,
+          take: limit,
+        }),
+        this.prisma.projectMember.count({
+          where: { userId: user.id },
+        }),
+      ]);
+      const items = memberships.map((m) => ({ ...m.project, myRole: m.role }));
+      return { items, total };
     }
   }
 
@@ -96,6 +113,26 @@ export class ProjectCoreService {
     }
 
     return project;
+  }
+
+  async update(id: string, updateDto: UpdateProjectDto) {
+    await this.findOne(id); // 检查是否存在
+
+    return this.prisma.project.update({
+      where: { id },
+      data: {
+        name: updateDto.name,
+        appId: updateDto.appId ?? null,
+        repoUrl: updateDto.repositoryUrl,
+        gitCredentialId: updateDto.gitCredentialId as string,
+        imRobotIds: updateDto.imRobotIds ? updateDto.imRobotIds : Prisma.DbNull,
+        framework: updateDto.framework as FrameworkType,
+        distPath: updateDto.distPath,
+        buildCommand: updateDto.buildCommand,
+        defaultBranch: updateDto.defaultBranch ?? null,
+        retentionCount: updateDto.retentionCount,
+      },
+    });
   }
 
   async remove(id: string) {

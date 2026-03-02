@@ -2,12 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
 import { encrypt, decrypt } from '../../../common/utils/crypto.util';
-import { User, GitCredentialType } from '@prisma/client';
+import { User } from '@prisma/client';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { writeFile, unlink } from 'fs/promises';
+import {
+  buildGitAuthContext,
+  buildNoAuthContext,
+  listBranchesWithContext,
+} from '../../../common/utils/git-auth.helper';
 
 const execAsync = promisify(exec);
 
@@ -37,18 +39,25 @@ export class GitCredentialsService {
     });
   }
 
-  async findAll() {
-    return await this.prisma.gitCredential.findMany({
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        username: true,
-        createdAt: true,
-        createdById: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(page: number = 1, limit: number = 15) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.gitCredential.findMany({
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          username: true,
+          createdAt: true,
+          createdById: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.gitCredential.count(),
+    ]);
+    return { items, total };
   }
 
   async remove(id: string) {
@@ -67,42 +76,62 @@ export class GitCredentialsService {
   }
 
   async testConnection(id: string, testUrl: string) {
-    /**
-     * 在真实的 CI/CD 场景中，我们会将 SSH 密钥写入临时文件，
-     * 使用 `GIT_SSH_COMMAND` 运行 `git ls-remote`，然后删除该文件。
-     * 如果是 HTTPS，则在 URL 中附加 username:token。
-     */
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
     if (!credential) throw new NotFoundException('凭证不存在');
 
     const plainSecret = decrypt(credential.secret);
+    const ctx = await buildGitAuthContext(
+      { type: credential.type, username: credential.username, plainSecret },
+      testUrl,
+    );
 
-    if (credential.type === GitCredentialType.ssh) {
-      const keyPath = join(tmpdir(), `id_rsa_test_${Date.now()}`);
-      try {
-        await writeFile(keyPath, plainSecret, { mode: 0o600 });
-        const { stdout } = await execAsync(
-          `GIT_SSH_COMMAND="ssh -i ${keyPath} -o StrictHostKeyChecking=no" git ls-remote ${testUrl}`,
-        );
-        return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
-      } catch (error) {
-        throw new BadRequestException(`SSH 测试失败: ${(error as Error).message}`);
-      } finally {
-        await unlink(keyPath).catch(() => {});
-      }
-    } else {
-      // HTTPS 方式
-      const urlWithCreds = testUrl.replace(
-        'https://',
-        `https://${credential.username}:${plainSecret}@`,
+    try {
+      const { stdout } = await execAsync(
+        `git ${ctx.extraArgs} ls-remote ${testUrl}`,
+        { env: ctx.env, timeout: 30_000 },
       );
-      try {
-        // 运行 git ls-remote 进行验证
-        const { stdout } = await execAsync(`git ls-remote ${urlWithCreds}`);
-        return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
-      } catch (error) {
-        throw new BadRequestException(`HTTPS 测试失败: ${(error as Error).message}`);
+      return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
+    } catch (error) {
+      const msg = (error as Error).message ?? String(error);
+      const sanitized = msg.replace(/https?:\/\/[^@\s]+@/g, 'https://***@');
+      throw new BadRequestException(`连接测试失败: ${sanitized}`);
+    } finally {
+      await ctx.cleanup();
+    }
+  }
+
+  /**
+   * 通过凭证调用 git ls-remote 获取远程仓库的所有分支名
+   * 支持 SSH / HTTPS (PAT + 密码) / GitHub / GitLab / Gitee 多平台
+   */
+  async listRemoteBranches(repoUrl: string, credentialId?: string): Promise<string[]> {
+    let ctx = buildNoAuthContext();
+
+    try {
+      if (credentialId) {
+        const credential = await this.prisma.gitCredential.findUnique({
+          where: { id: credentialId },
+        });
+        if (!credential) throw new NotFoundException('凭证不存在');
+
+        ctx = await buildGitAuthContext(
+          {
+            type: credential.type,
+            username: credential.username,
+            plainSecret: decrypt(credential.secret),
+          },
+          repoUrl,
+        );
       }
+
+      return await listBranchesWithContext(repoUrl, ctx);
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      const msg = (error as Error).message ?? String(error);
+      const sanitized = msg.replace(/https?:\/\/[^@\s]+@/g, 'https://***@');
+      throw new BadRequestException(`获取分支失败: ${sanitized}`);
+    } finally {
+      await ctx.cleanup();
     }
   }
 }

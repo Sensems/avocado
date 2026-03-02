@@ -1,3 +1,4 @@
+import { ApiResultResponse } from './common/decorators/api-result.decorator';
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 

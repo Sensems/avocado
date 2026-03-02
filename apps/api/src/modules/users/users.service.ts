@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, ConflictException, NotFoundException } from '
 import { PrismaService } from '../../common/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from '@prisma/client';
 
 @Injectable()
@@ -77,10 +78,60 @@ export class UsersService implements OnModuleInit {
     });
   }
 
-  async findAll() {
-    return await this.prisma.user.findMany({
+  async findAll(page: number = 1, limit: number = 15) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        skip,
+        take: limit,
+        select: { id: true, username: true, isSuperAdmin: true, status: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count(),
+    ]);
+    return { items, total };
+  }
+
+  async update(id: string, updateUserDto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+
+    const data: any = { ...updateUserDto };
+    
+    // 如果存在同名用户，需要避免冲突
+    if (data.username && data.username !== user.username) {
+      const existing = await this.prisma.user.findUnique({ where: { username: data.username } });
+      if (existing) {
+        throw new ConflictException('用户名已存在');
+      }
+    }
+
+    if (data.password) {
+      data.passwordHash = await bcrypt.hash(data.password, 10);
+      delete data.password;
+    }
+
+    return await this.prisma.user.update({
+      where: { id },
+      data,
       select: { id: true, username: true, isSuperAdmin: true, status: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async remove(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      throw new NotFoundException('用户不存在');
+    }
+    
+    if (user.isSuperAdmin) {
+      throw new ConflictException('无法删除超级管理员');
+    }
+
+    return await this.prisma.user.delete({
+      where: { id },
     });
   }
 }

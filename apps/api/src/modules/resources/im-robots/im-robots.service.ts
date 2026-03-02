@@ -36,18 +36,25 @@ export class ImRobotsService {
     });
   }
 
-  async findAll() {
-    return await this.prisma.imRobot.findMany({
-      select: {
-        id: true,
-        name: true,
-        platform: true,
-        webhookUrl: true,
-        createdAt: true,
-        createdById: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(page: number = 1, limit: number = 15) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.imRobot.findMany({
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          platform: true,
+          webhookUrl: true,
+          createdAt: true,
+          createdById: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.imRobot.count(),
+    ]);
+    return { items, total };
   }
 
   async remove(id: string) {

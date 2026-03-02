@@ -1,3 +1,4 @@
+import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
 import {
   Controller,
   Get,
@@ -12,12 +13,14 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProjectCoreService } from './project-core.service';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ProjectGuard } from '../../../common/guards/project.guard';
 import { User, ProjectRole } from '@prisma/client';
@@ -77,22 +80,45 @@ export class ProjectCoreController {
   }
 
   @Get()
-  @ApiOperation({ summary: '获取项目列表（超级管理员可见所有，其他可见已加入）' })
-  findAll(@Request() req: ExpressRequest) {
+  @ApiOperation({ summary: '获取项目列表（分页，超级管理员可见所有，其他可见已加入）' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 15' })
+  @ApiResultResponse()
+
+  findAll(
+    @Request() req: ExpressRequest,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
-    return this.projectCoreService.findAll(user);
+    const pageNumber = page ? parseInt(page, 10) : 1;
+    const limitNumber = limit ? parseInt(limit, 10) : 15;
+    return this.projectCoreService.findAll(user, pageNumber, limitNumber);
   }
 
   @Get(':id')
   @ApiOperation({ summary: '获取项目详情（包含成员和设置）' })
+  @ApiResultResponse()
+
   findOne(@Param('id') id: string) {
     return this.projectCoreService.findOne(id);
+  }
+
+  @Put(':id')
+  @UseGuards(ProjectGuard)
+  @ApiOperation({ summary: '更新项目设置（需要维护者）' })
+  @ApiResultResponse()
+
+  update(@Param('id') id: string, @Body() updateDto: UpdateProjectDto) {
+    return this.projectCoreService.update(id, updateDto);
   }
 
   @Delete(':id')
   @UseGuards(ProjectGuard) // Re-uses our dynamic ProjectGuard mechanism
   @ApiOperation({ summary: '删除项目（需要维护者角色）' })
+  @ApiResultResponse()
+
   remove(@Param('id') id: string) {
     return this.projectCoreService.remove(id);
   }
@@ -102,6 +128,8 @@ export class ProjectCoreController {
   @Post(':id/members')
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '将用户添加到项目并指定角色（需要维护者）' })
+  @ApiResultResponse()
+
   addMember(@Param('id') id: string, @Body() dto: AddProjectMemberDto) {
     return this.projectCoreService.addMember(id, dto);
   }
@@ -109,6 +137,8 @@ export class ProjectCoreController {
   @Put(':id/members/:userId')
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '修改项目成员角色（需要维护者）' })
+  @ApiResultResponse()
+
   updateMemberRole(
     @Param('id') id: string,
     @Param('userId') userId: string,
@@ -120,6 +150,8 @@ export class ProjectCoreController {
   @Delete(':id/members/:userId')
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '移除项目成员（需要维护者）' })
+  @ApiResultResponse()
+
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.projectCoreService.removeMember(id, userId);
   }

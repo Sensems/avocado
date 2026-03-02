@@ -76,6 +76,7 @@ model Project {
   distPath       String?       @map("dist_path") @db.VarChar(255)
   privateKeyPath String?       @map("private_key_path") @db.VarChar(500)
   retentionCount Int           @default(10) @map("retention_count")
+  defaultBranch  String?       @map("default_branch") @db.VarChar(100)
   imRobotIds     Json?         @map("im_robot_ids") // Array of ImRobot IDs
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")

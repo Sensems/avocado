@@ -76,4 +76,16 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       timestamp: new Date().toISOString(),
     });
   }
+
+  /**
+   * 将体验版二维码（base64）广播给 room 内的客户端
+   */
+  @OnEvent('build.qrcode')
+  handleBuildQrcodeEvent(payload: { taskId: string; base64: string }) {
+    const room = `build_logs_${payload.taskId}`;
+    this.server.to(room).emit('build_qrcode', {
+      taskId: payload.taskId,
+      base64: payload.base64,
+    });
+  }
 }

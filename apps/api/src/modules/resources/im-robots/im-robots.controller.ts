@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Param, Delete, Request, UseGuards } from '@nestjs/common';
+import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
+import { Controller, Get, Post, Body, Param, Delete, Request, UseGuards, Query } from '@nestjs/common';
 import { ImRobotsService } from './im-robots.service';
 import { CreateImRobotDto } from './dto/create-im-robot.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { User } from '@prisma/client';
 import type { Request as ExpressRequest } from 'express';
@@ -15,6 +16,8 @@ export class ImRobotsController {
 
   @Post()
   @ApiOperation({ summary: '添加新的 IM 机器人（webhook 和可选密钥）' })
+  @ApiResultResponse()
+
   create(@Body() createDto: CreateImRobotDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -22,19 +25,32 @@ export class ImRobotsController {
   }
 
   @Get()
-  @ApiOperation({ summary: '获取所有 IM 机器人列表' })
-  findAll() {
-    return this.imRobotsService.findAll();
+  @ApiOperation({ summary: '获取所有 IM 机器人列表（分页）' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 15' })
+  @ApiResultResponse()
+
+  findAll(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNumber = page ? parseInt(page, 10) : 1;
+    const limitNumber = limit ? parseInt(limit, 10) : 15;
+    return this.imRobotsService.findAll(pageNumber, limitNumber);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除 IM 机器人配置' })
+  @ApiResultResponse()
+
   remove(@Param('id') id: string) {
     return this.imRobotsService.remove(id);
   }
 
   @Post(':id/test')
   @ApiOperation({ summary: '发送测试消息以验证 IM 机器人连通性' })
+  @ApiResultResponse()
+
   testConnection(@Param('id') id: string) {
     return this.imRobotsService.testConnection(id);
   }
