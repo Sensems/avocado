@@ -6,6 +6,15 @@ import { io, Socket } from 'socket.io-client'
 
 const props = defineProps<{
     taskId?: string
+    /**
+     * 历史日志静态文件路径（如 /storage/logs/build-xx.log）。
+     * 有值时进入"历史回显"模式，直接拉取文件内容渲染，不连接 WS。
+     */
+    logPath?: string
+    /**
+     * 任务状态。running 时无论是否有 logPath，都走实时 WS。
+     */
+    status?: string
 }>()
 
 const terminalContainer = ref<HTMLElement | null>(null)
@@ -21,23 +30,49 @@ const initTerminal = () => {
     term = new Terminal({
         cursorBlink: true,
         theme: {
-            background: '#18181b', // zinc-950
-            foreground: '#e4e4e7', // zinc-200
-            cursor: '#8b5cf6', // violet-500
+            background: '#18181b',
+            foreground: '#e4e4e7',
+            cursor: '#8b5cf6',
         },
+        rows: 30,
         fontFamily: 'Menlo, Monaco, "Courier New", monospace',
         fontSize: 14,
         disableStdin: true
     })
 
     term.open(terminalContainer.value)
-    term.writeln('\x1b[35m[System]\x1b[0m Waiting for build task to start...')
+}
+
+/** 历史日志模式：直接 HTTP 拉取日志文件并渲染 */
+const loadHistoryLog = async (logPath: string) => {
+    term?.writeln('\x1b[35m[System]\x1b[0m Loading build log...')
+    try {
+        const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/api$/, '')
+        const url = `${base}${logPath}`
+        const res = await fetch(url)
+        if (!res.ok) {
+            term?.writeln(`\x1b[31m[System]\x1b[0m Failed to load log (HTTP ${res.status}).`)
+            return
+        }
+        const text = await res.text()
+        if (!text.trim()) {
+            term?.writeln('\x1b[33m[System]\x1b[0m Log file is empty.')
+            return
+        }
+        // 按行写入终端，保留 ANSI 色彩码
+        const lines = text.split(/\r?\n/)
+        for (const line of lines) {
+            term?.writeln(line)
+        }
+        term?.writeln('\x1b[32m[System]\x1b[0m ─── End of log ───')
+    } catch (e) {
+        term?.writeln(`\x1b[31m[System]\x1b[0m Error loading log: ${(e as Error).message}`)
+    }
 }
 
 const connectWebSocket = () => {
     if (!props.taskId) return
 
-    // 每次重连时重置二维码
     qrcodeDataUrl.value = ''
 
     const token = localStorage.getItem('avocado-token')
@@ -50,7 +85,6 @@ const connectWebSocket = () => {
 
     socket.on('connect', () => {
         term?.writeln('\x1b[32m[System]\x1b[0m Connected to build terminal.')
-        // 加入对应 task 的 room，后端通过 room 广播日志
         socket!.emit('subscribe_build_logs', { taskId: props.taskId })
     })
 
@@ -58,7 +92,6 @@ const connectWebSocket = () => {
         term?.writeln(data.log)
     })
 
-    /** 收到体验版二维码，在终端下方展示 */
     socket.on('build_qrcode', (data: { taskId: string; base64: string }) => {
         qrcodeDataUrl.value = data.base64
         term?.writeln('\x1b[33m[System]\x1b[0m 体验版二维码已生成，请在下方扫码。')
@@ -69,24 +102,41 @@ const connectWebSocket = () => {
     })
 }
 
-watch(() => props.taskId, (newVal) => {
-    if (socket) {
-        socket.disconnect()
-    }
-    if (term) {
-        term.clear()
-    }
-    qrcodeDataUrl.value = ''
-    if (newVal) {
+/**
+ * 根据 props 决定走哪种模式：
+ * - status === 'running' 或没有 logPath → 实时 WS
+ * - 有 logPath 且非 running → HTTP 历史回显
+ */
+const startSession = () => {
+    const isRunning = props.status === 'running' || props.status === 'pending'
+    const hasLogPath = !!props.logPath
+
+    if (hasLogPath && !isRunning) {
+        loadHistoryLog(props.logPath!)
+    } else {
+        term?.writeln('\x1b[35m[System]\x1b[0m Waiting for build task to start...')
         connectWebSocket()
     }
-})
+}
+
+watch(
+    () => [props.taskId, props.logPath, props.status],
+    () => {
+        // 断开旧连接
+        if (socket) {
+            socket.disconnect()
+            socket = null
+        }
+        // 清屏
+        term?.clear()
+        qrcodeDataUrl.value = ''
+        startSession()
+    }
+)
 
 onMounted(() => {
     initTerminal()
-    if (props.taskId) {
-        connectWebSocket()
-    }
+    startSession()
 })
 
 onUnmounted(() => {
@@ -102,7 +152,7 @@ onUnmounted(() => {
 <template>
     <div class="terminal-wrapper rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-zinc-950">
         <!-- xterm 终端区域 -->
-        <div ref="terminalContainer" class="h-[500px] w-full p-4"></div>
+        <div ref="terminalContainer" class="w-full p-4"></div>
 
         <!-- 体验版二维码区域（有二维码时显示） -->
         <Transition name="qrcode-slide">

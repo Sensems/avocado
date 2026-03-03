@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, h } from 'vue'
+import { ref, onMounted, watch, h, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProjectDetail, updateProject } from '@/api/project'
 import type { ProjectDto } from '@/api/project'
@@ -12,9 +12,11 @@ import type { ProjectMemberDto } from '@/api/project-member'
 import { getUsers } from '@/api/user'
 import WebSocketTerminal from '@/components/WebSocketTerminal.vue'
 import { useMessage, useDialog, NTag, NButton, NSelect, NDrawer, NDrawerContent } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 
 const message = useMessage()
 const dialog = useDialog()
+const { t } = useI18n()
 
 const route = useRoute()
 const projectId = route.params.id as string
@@ -50,7 +52,7 @@ const bumpPatchVersion = (version: string | undefined): string => {
     if (!version) return '1.0.0'
     const parts = version.split('.')
     if (parts.length === 3) {
-        const patch = parseInt(parts[2], 10)
+        const patch = parseInt(parts[2]!, 10)
         if (!isNaN(patch)) {
             return `${parts[0]}.${parts[1]}.${patch + 1}`
         }
@@ -62,6 +64,8 @@ const bumpPatchVersion = (version: string | undefined): string => {
 const logDrawerOpen = ref(false)
 const logTaskId = ref('')
 const logTaskVersion = ref('')
+const logTaskLogPath = ref('')
+const logTaskStatus = ref('')
 
 // Download Drawer State
 const downloadDrawerOpen = ref(false)
@@ -155,6 +159,8 @@ const fetchBuilds = async () => {
 const handleViewLog = (row: BuildTaskDto) => {
     logTaskId.value = row.id
     logTaskVersion.value = row.version || row.id.substring(0, 8)
+    logTaskLogPath.value = row.logPath ?? ''
+    logTaskStatus.value = row.status
     logDrawerOpen.value = true
 }
 
@@ -189,7 +195,7 @@ const handleTriggerBuild = async () => {
             branch: buildBranch.value || project.value?.defaultBranch || 'main',
             version: buildVersion.value || undefined,
         })
-        message.success('Build triggered successfully')
+        message.success(t('projectDetail.terminal.buildSuccess'))
         activeBuildTaskId.value = res.data?.id
         activeTab.value = 'terminal'
         fetchBuilds()
@@ -202,14 +208,14 @@ const handleTriggerBuild = async () => {
 
 const handleCancelTask = async (taskId: string) => {
     dialog.warning({
-        title: 'Warning',
-        content: 'Cancel this build task?',
-        positiveText: 'Cancel',
-        negativeText: 'Keep',
+        title: t('projectDetail.cancel.dialogTitle'),
+        content: t('projectDetail.cancel.dialogContent'),
+        positiveText: t('projectDetail.cancel.positiveText'),
+        negativeText: t('projectDetail.cancel.negativeText'),
         onPositiveClick: async () => {
             try {
                 await cancelTask(taskId)
-                message.success('Task canceled')
+                message.success(t('projectDetail.cancel.canceledMsg'))
                 fetchBuilds()
             } catch (e) {
                 console.error(e)
@@ -221,7 +227,7 @@ const handleCancelTask = async (taskId: string) => {
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
     const d = new Date(dateStr)
-    return isNaN(d.getTime()) ? dateStr : new Intl.DateTimeFormat('en-US', {
+    return isNaN(d.getTime()) ? dateStr : new Intl.DateTimeFormat('zh-CN', {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(d)
 }
@@ -231,8 +237,20 @@ const handleUpdateSettings = async () => {
     if (!project.value) return
     saving.value = true
     try {
-        await updateProject(projectId, project.value)
-        message.success('Project configuration saved')
+        const payload: Partial<ProjectDto> = {
+            name: project.value.name,
+            appId: project.value.appId,
+            repositoryUrl: project.value.repoUrl,
+            framework: project.value.framework,
+            buildCommand: project.value.buildCommand,
+            distPath: project.value.distPath,
+            gitCredentialId: project.value.gitCredentialId,
+            imRobotIds: project.value.imRobotIds,
+            retentionCount: project.value.retentionCount,
+            defaultBranch: project.value.defaultBranch,
+        }
+        await updateProject(projectId, payload)
+        message.success(t('projectDetail.settings.saveSuccess'))
         fetchProject()
     } catch (e) {
         console.error(e)
@@ -241,13 +259,11 @@ const handleUpdateSettings = async () => {
     }
 }
 
-// Members Logic -> removed fetchMembers, relying on fetchProject
-
 const handleAddMember = async () => {
     if (!memberForm.value.userId) return
     try {
         await addProjectMember(projectId, memberForm.value)
-        message.success('Member added')
+        message.success(t('projectDetail.members.added'))
         memberDialog.value = false
         fetchProject()
     } catch (e) {
@@ -257,14 +273,14 @@ const handleAddMember = async () => {
 
 const handleRemoveMember = async (userId: string) => {
     dialog.warning({
-        title: 'Warning',
-        content: 'Remove this member from the project?',
-        positiveText: 'Remove',
-        negativeText: 'Cancel',
+        title: t('projectDetail.members.removeConfirmTitle'),
+        content: t('projectDetail.members.removeConfirmContent'),
+        positiveText: t('projectDetail.members.removeConfirmOk'),
+        negativeText: t('projectDetail.members.removeConfirmCancel'),
         onPositiveClick: async () => {
             try {
                 await removeProjectMember(projectId, userId)
-                message.success('Member removed')
+                message.success(t('projectDetail.members.removed'))
                 fetchProject()
             } catch (e) {
                 console.error(e)
@@ -276,7 +292,7 @@ const handleRemoveMember = async (userId: string) => {
 const handleRoleChange = async (userId: string, role: string) => {
     try {
         await updateProjectMemberRole(projectId, userId, role)
-        message.success('Role updated')
+        message.success(t('projectDetail.members.roleUpdated'))
         fetchProject()
     } catch (e) {
         console.error(e)
@@ -300,66 +316,67 @@ onMounted(async () => {
     }
 })
 
-const buildColumns = [
+// 使用 computed 确保 t() 响应式
+const buildColumns = computed(() => [
     {
-        title: 'Version', key: 'version', width: 120, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colVersion'), key: 'version', width: 120, render(row: BuildTaskDto) {
             return h('span', { class: 'font-mono text-xs bg-zinc-800 px-2 py-1 rounded text-zinc-300' }, row.version || row.id!.substring(0, 8))
         }
     },
     {
-        title: 'Status', key: 'status', width: 120, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colStatus'), key: 'status', width: 120, render(row: BuildTaskDto) {
             const type = row.status === 'success' ? 'success' : row.status === 'failed' ? 'error' : row.status === 'running' ? 'info' : 'warning';
             return h(NTag, { type, size: 'small', bordered: false }, { default: () => row.status?.toUpperCase() })
         }
     },
     {
-        title: 'Commit', key: 'commitMessage', minWidth: 200, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colCommit'), key: 'commitMessage', minWidth: 200, render(row: BuildTaskDto) {
             return h('div', { class: 'flex flex-col' }, [
-                h('div', { class: 'truncate text-sm', title: row.commitMessage }, row.commitMessage || 'Manual Trigger'),
+                h('div', { class: 'truncate text-sm', title: row.commitMessage }, row.commitMessage || t('projectDetail.history.manualTrigger')),
                 row.commitHash ? h('div', { class: 'text-xs text-zinc-500 font-mono mt-0.5' }, row.commitHash.substring(0, 7)) : null
             ])
         }
     },
     {
-        title: 'Duration', key: 'duration', width: 100, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colDuration'), key: 'duration', width: 100, render(row: BuildTaskDto) {
             return row.duration ? `${row.duration}s` : '-'
         }
     },
     {
-        title: 'Date', key: 'createdAt', width: 160, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colDate'), key: 'createdAt', width: 160, render(row: BuildTaskDto) {
             return h('span', { class: 'text-zinc-400 text-sm' }, formatDate(row.createdAt as string))
         }
     },
     {
-        title: 'Actions', key: 'actions', width: 220, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colActions'), key: 'actions', width: 220, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
             return h('div', { class: 'flex gap-2 justify-end' }, [
-                h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewLog(row) }, { default: () => 'View Logs' }),
-                h(NButton, { text: true, type: 'primary', size: 'small', disabled: !row.artifactPath && !row.qrcodePath, onClick: () => handleDownload(row) }, { default: () => 'Download' }),
-                h(NButton, { text: true, type: 'warning', size: 'small', disabled: row.status === 'success' || row.status === 'failed' || row.status === 'canceled', onClick: () => handleCancelTask(row.id as string) }, { default: () => 'Cancel' })
+                h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewLog(row) }, { default: () => t('projectDetail.history.viewLogs') }),
+                h(NButton, { text: true, type: 'primary', size: 'small', disabled: !row.artifactPath && !row.qrcodePath, onClick: () => handleDownload(row) }, { default: () => t('projectDetail.history.download') }),
+                h(NButton, { text: true, type: 'warning', size: 'small', disabled: row.status === 'success' || row.status === 'failed' || row.status === 'canceled', onClick: () => handleCancelTask(row.id as string) }, { default: () => t('projectDetail.history.cancelBuild') })
             ])
         }
     }
-]
+])
 
-const memberColumns = [
-    { title: 'User', key: 'username' },
+const memberColumns = computed(() => [
+    { title: t('projectDetail.members.colUser'), key: 'username' },
     {
-        title: 'Role', key: 'role', width: 180, render(row: ProjectMemberDto) {
+        title: t('projectDetail.members.colRole'), key: 'role', width: 180, render(row: ProjectMemberDto) {
             return h(NSelect, {
                 value: row.role, size: 'small', options: [
-                    { label: 'Maintainer', value: 'maintainer' },
-                    { label: 'Developer', value: 'developer' },
-                    { label: 'Guest', value: 'guest' }
+                    { label: t('projectDetail.members.roleOptions.maintainer'), value: 'maintainer' },
+                    { label: t('projectDetail.members.roleOptions.developer'), value: 'developer' },
+                    { label: t('projectDetail.members.roleOptions.guest'), value: 'guest' }
                 ], onUpdateValue: (val) => handleRoleChange(row.userId, val as string)
             })
         }
     },
     {
-        title: 'Actions', key: 'actions', width: 100, fixed: 'right' as const, align: 'right' as const, render(row: ProjectMemberDto) {
-            return h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleRemoveMember(row.userId) }, { default: () => 'Remove' })
+        title: t('projectDetail.members.colActions'), key: 'actions', width: 100, fixed: 'right' as const, align: 'right' as const, render(row: ProjectMemberDto) {
+            return h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleRemoveMember(row.userId) }, { default: () => t('projectDetail.members.remove') })
         }
     }
-]
+])
 </script>
 
 <template>
@@ -367,7 +384,8 @@ const memberColumns = [
         <div class="flex items-center justify-between mb-8">
             <div>
                 <div class="flex items-center gap-3">
-                    <h2 class="text-3xl font-bold text-white tracking-tight">{{ project?.name || 'Loading Project...' }}
+                    <h2 class="text-3xl font-bold text-white tracking-tight">{{ project?.name ||
+                        t('projectDetail.loadingTitle') }}
                     </h2>
                     <span v-if="project?.framework"
                         class="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800 text-zinc-300 border border-white/5">
@@ -382,32 +400,32 @@ const memberColumns = [
                     </svg> {{ project?.repoUrl }}
                 </p>
             </div>
-            <n-button dashed @click="$router.push('/projects')">Back to Projects</n-button>
+            <n-button dashed @click="$router.push('/projects')">{{ t('projectDetail.backToProjects') }}</n-button>
         </div>
 
         <!-- Main Tabs Area -->
         <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">
             <n-tabs v-model:value="activeTab" type="line" class="w-full project-tabs px-6" animated>
-                <n-tab-pane label="Build History" name="history">
+                <n-tab-pane :label="t('projectDetail.tabHistory')" name="history">
                     <div class="p-6">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-xl font-semibold text-white">Build History</h3>
-                            <n-button dashed size="small" @click="fetchBuilds"
-                                :loading="loadingBuilds">Refresh</n-button>
+                            <h3 class="text-xl font-semibold text-white">{{ t('projectDetail.tabHistory') }}</h3>
+                            <n-button dashed size="small" @click="fetchBuilds" :loading="loadingBuilds">{{
+                                t('common.refresh') }}</n-button>
                         </div>
                         <n-data-table :columns="buildColumns" :data="buildTasks" :loading="loadingBuilds"
                             :bordered="false" class="dark-table" />
                     </div>
                 </n-tab-pane>
 
-                <n-tab-pane label="Terminal Logs" name="terminal">
+                <n-tab-pane :label="t('projectDetail.tabTerminal')" name="terminal">
                     <div class="p-6">
                         <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-xl font-semibold text-white">Live Execution Terminal</h3>
+                            <h3 class="text-xl font-semibold text-white">{{ t('projectDetail.terminal.title') }}</h3>
                             <div class="flex items-center gap-2">
                                 <!-- 版本号 -->
-                                <n-input v-model:value="buildVersion" size="small" placeholder="Version e.g. 1.0.0"
-                                    style="width: 148px">
+                                <n-input v-model:value="buildVersion" size="small"
+                                    :placeholder="t('projectDetail.terminal.versionPlaceholder')" style="width: 148px">
                                     <template #prefix>
                                         <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor"
                                             viewBox="0 0 24 24">
@@ -417,8 +435,9 @@ const memberColumns = [
                                     </template>
                                 </n-input>
                                 <!-- 分支下拉选择 -->
-                                <n-select v-model:value="buildBranch" filterable tag size="small" placeholder="选择构建分支"
-                                    style="width: 180px" :loading="loadingBuildBranches" :options="buildBranchOptions"
+                                <n-select v-model:value="buildBranch" filterable tag size="small"
+                                    :placeholder="t('projectDetail.terminal.branchPlaceholder')" style="width: 180px"
+                                    :loading="loadingBuildBranches" :options="buildBranchOptions"
                                     :fallback-option="(v: string) => ({ label: v, value: v })">
                                     <template #arrow>
                                         <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor"
@@ -429,7 +448,7 @@ const memberColumns = [
                                     </template>
                                 </n-select>
                                 <n-button size="small" dashed :loading="loadingBuildBranches" @click="loadBuildBranches"
-                                    title="刷新分支列表">
+                                    :title="t('projectDetail.terminal.refreshBranches')">
                                     <template #icon>
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -438,7 +457,8 @@ const memberColumns = [
                                     </template>
                                 </n-button>
                                 <n-button type="info" dashed size="small" :loading="triggering"
-                                    @click="handleTriggerBuild">Trigger Build</n-button>
+                                    @click="handleTriggerBuild">{{
+                                        t('projectDetail.terminal.triggerBuild') }}</n-button>
                             </div>
                         </div>
                         <div v-if="activeBuildTaskId">
@@ -446,70 +466,74 @@ const memberColumns = [
                         </div>
                         <div v-else
                             class="text-zinc-500 italic py-10 text-center border border-dashed border-white/10 rounded-xl">
-                            Trigger a build to view live logs.
+                            {{ t('projectDetail.terminal.noActiveBuild') }}
                         </div>
                     </div>
                 </n-tab-pane>
 
-                <n-tab-pane label="Members" name="members">
+                <n-tab-pane :label="t('projectDetail.tabMembers')" name="members">
                     <div class="p-6">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-xl font-semibold text-white">Team Members</h3>
-                            <n-button type="primary" size="small" @click="memberDialog = true">Add Member</n-button>
+                            <h3 class="text-xl font-semibold text-white">{{ t('projectDetail.members.title') }}</h3>
+                            <n-button type="primary" size="small" @click="memberDialog = true">{{
+                                t('projectDetail.members.addMember')
+                                }}</n-button>
                         </div>
                         <n-data-table :columns="memberColumns" :data="members" :bordered="false" class="dark-table" />
                     </div>
                 </n-tab-pane>
 
-                <n-tab-pane label="Settings" name="settings">
+                <n-tab-pane :label="t('projectDetail.tabSettings')" name="settings">
                     <div class="p-6 max-w-2xl">
-                        <h3 class="text-xl font-semibold mb-6 text-white">Project Settings</h3>
+                        <h3 class="text-xl font-semibold mb-6 text-white">{{ t('projectDetail.settings.title') }}</h3>
                         <n-form v-if="project" label-placement="left" label-width="160">
 
                             <!-- 基本信息 -->
-                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Basic</p>
-                            <n-form-item label="Project Name">
+                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{{
+                                t('projectDetail.settings.sectionBasic') }}</p>
+                            <n-form-item :label="t('projectDetail.settings.projectName')">
                                 <n-input v-model:value="project.name" />
                             </n-form-item>
-                            <n-form-item label="Framework">
+                            <n-form-item :label="t('projectDetail.settings.framework')">
                                 <n-select v-model:value="project.framework" class="w-full" :options="[
-                                    { label: 'Native', value: 'native' },
+                                    { label: '原生小程序', value: 'native' },
                                     { label: 'UniApp', value: 'uniapp' },
                                 ]" />
                             </n-form-item>
-                            <n-form-item label="App ID">
+                            <n-form-item :label="t('projectDetail.settings.appId')">
                                 <n-input v-model:value="project.appId" placeholder="wx1234567890abcdef（微信小程序 AppID）" />
                             </n-form-item>
 
                             <n-divider class="my-4" />
 
                             <!-- 仓库与构建 -->
-                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Repository
-                                &amp; Build</p>
-                            <n-form-item label="Repository URL">
+                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{{
+                                t('projectDetail.settings.sectionRepoAndBuild') }}</p>
+                            <n-form-item :label="t('projectDetail.settings.repoUrl')">
                                 <n-input v-model:value="project.repoUrl" placeholder="git@github.com:org/repo.git" />
                             </n-form-item>
-                            <n-form-item label="Build Command">
+                            <n-form-item :label="t('projectDetail.settings.buildCommand')">
                                 <n-input v-model:value="project.buildCommand"
                                     placeholder="e.g. npm run build:mp-weixin" />
                             </n-form-item>
-                            <n-form-item label="Dist Path">
+                            <n-form-item :label="t('projectDetail.settings.distPath')">
                                 <n-input v-model:value="project.distPath" placeholder="e.g. dist/build/mp-weixin" />
                             </n-form-item>
-                            <n-form-item label="Retention Count">
+                            <n-form-item :label="t('projectDetail.settings.retentionCount')">
                                 <n-input-number v-model:value="project.retentionCount" :min="1" :max="100"
                                     placeholder="10" class="w-full" />
                             </n-form-item>
 
                             <!-- 默认构建分支 -->
-                            <n-form-item label="Default Branch">
+                            <n-form-item :label="t('projectDetail.settings.defaultBranch')">
                                 <div class="flex gap-2 w-full">
                                     <n-select v-model:value="project.defaultBranch" filterable tag clearable
-                                        placeholder="选择默认构建分支（可输入自定义）" class="flex-1" :loading="loadingSettingsBranches"
+                                        :placeholder="t('projectDetail.settings.defaultBranchPlaceholder')"
+                                        class="flex-1" :loading="loadingSettingsBranches"
                                         :options="settingsBranchOptions"
                                         :fallback-option="(v: string) => ({ label: v, value: v })" />
                                     <n-button :loading="loadingSettingsBranches" @click="loadSettingsBranches"
-                                        title="刷新分支列表">
+                                        :title="t('projectDetail.settings.refreshBranches')">
                                         <template #icon>
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -519,29 +543,51 @@ const memberColumns = [
                                     </n-button>
                                 </div>
                                 <template #feedback>
-                                    <span class="text-xs text-zinc-500">触发构建时将默认使用此分支，也可临时切换其他分支</span>
+                                    <span class="text-xs text-zinc-500">{{ t('projectDetail.settings.defaultBranchHint')
+                                        }}</span>
                                 </template>
                             </n-form-item>
 
                             <n-divider class="my-4" />
 
                             <!-- 集成 -->
-                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Integrations
-                            </p>
-                            <n-form-item label="Git Credential">
-                                <n-select v-model:value="project.gitCredentialId" placeholder="Select a Git Credential"
-                                    clearable class="w-full"
-                                    :options="credentials.map(c => ({ label: c.name, value: c.id }))" />
+                            <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{{
+                                t('projectDetail.settings.sectionIntegrations') }}</p>
+                            <n-form-item :label="t('projectDetail.settings.gitCredential')">
+                                <div class="flex gap-2 w-full">
+                                    <n-select v-model:value="project.gitCredentialId"
+                                        :placeholder="t('projectDetail.settings.gitCredentialPlaceholder')" clearable
+                                        class="flex-1"
+                                        :options="credentials.map(c => ({ label: c.name, value: c.id }))" />
+                                    <n-button tag="a" href="/admin/credentials" target="_blank" title="前往凭证管理页面">
+                                        <template #icon>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M12 4v16m8-8H4" />
+                                            </svg>
+                                        </template>
+                                    </n-button>
+                                </div>
                             </n-form-item>
-                            <n-form-item label="IM Robots">
-                                <n-select v-model:value="project.imRobotIds" multiple
-                                    placeholder="Select notification robots" class="w-full"
-                                    :options="robots.map(r => ({ label: r.name, value: r.id }))" />
+                            <n-form-item :label="t('projectDetail.settings.imRobots')">
+                                <div class="flex gap-2 w-full">
+                                    <n-select v-model:value="project.imRobotIds" multiple
+                                        :placeholder="t('projectDetail.settings.imRobotsPlaceholder')" class="flex-1"
+                                        :options="robots.map(r => ({ label: r.name, value: r.id }))" />
+                                    <n-button tag="a" href="/admin/robots" target="_blank" title="前往机器人管理页面">
+                                        <template #icon>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M12 4v16m8-8H4" />
+                                            </svg>
+                                        </template>
+                                    </n-button>
+                                </div>
                             </n-form-item>
 
                             <div class="mt-6">
-                                <n-button type="primary" :loading="saving" @click="handleUpdateSettings">Save
-                                    Configuration</n-button>
+                                <n-button type="primary" :loading="saving" @click="handleUpdateSettings">{{
+                                    t('projectDetail.settings.saveConfig') }}</n-button>
                             </div>
                         </n-form>
                     </div>
@@ -549,48 +595,53 @@ const memberColumns = [
             </n-tabs>
         </div>
 
-        <!-- Member Dialog -->
         <!-- Member Modal -->
-        <n-modal v-model:show="memberDialog" preset="card" title="Add Project Member" class="max-w-[400px]"
-            :bordered="false">
+        <n-modal v-model:show="memberDialog" preset="card" :title="t('projectDetail.members.dialog.title')"
+            class="max-w-[400px]" :bordered="false">
             <n-form>
-                <n-form-item label="Select User">
-                    <n-select v-model:value="memberForm.userId" filterable placeholder="Search username" class="w-full"
+                <n-form-item :label="t('projectDetail.members.dialog.selectUser')">
+                    <n-select v-model:value="memberForm.userId" filterable
+                        :placeholder="t('projectDetail.members.dialog.selectUserPlaceholder')" class="w-full"
                         :options="sysUsers.map(u => ({ label: u.username, value: u.id }))" />
                 </n-form-item>
-                <n-form-item label="Role">
-                    <n-select v-model:value="memberForm.role" class="w-full"
-                        :options="[{ label: 'Maintainer', value: 'maintainer' }, { label: 'Developer', value: 'developer' }, { label: 'Guest', value: 'guest' }]" />
+                <n-form-item :label="t('projectDetail.members.dialog.role')">
+                    <n-select v-model:value="memberForm.role" class="w-full" :options="[
+                        { label: t('projectDetail.members.roleOptions.maintainer'), value: 'maintainer' },
+                        { label: t('projectDetail.members.roleOptions.developer'), value: 'developer' },
+                        { label: t('projectDetail.members.roleOptions.guest'), value: 'guest' }
+                    ]" />
                 </n-form-item>
             </n-form>
             <div class="flex justify-end gap-4 mt-6">
-                <n-button @click="memberDialog = false">Cancel</n-button>
-                <n-button type="primary" @click="handleAddMember">Add User</n-button>
+                <n-button @click="memberDialog = false">{{ t('common.cancel') }}</n-button>
+                <n-button type="primary" @click="handleAddMember">{{ t('projectDetail.members.addMember') }}</n-button>
             </div>
         </n-modal>
 
         <!-- Build Log Drawer -->
         <n-drawer v-model:show="logDrawerOpen" :width="860" placement="right" @after-leave="logTaskId = ''">
-            <n-drawer-content :title="`Build Logs · ${logTaskVersion}`" closable>
-                <WebSocketTerminal v-if="logTaskId" :task-id="logTaskId" />
+            <n-drawer-content :title="t('projectDetail.logDrawerTitle', { version: logTaskVersion })" closable>
+                <WebSocketTerminal v-if="logTaskId" :task-id="logTaskId" :log-path="logTaskLogPath || undefined"
+                    :status="logTaskStatus" />
             </n-drawer-content>
         </n-drawer>
 
         <!-- Download Drawer -->
         <n-drawer v-model:show="downloadDrawerOpen" :width="480" placement="right" @after-leave="downloadTask = null">
-            <n-drawer-content :title="`Download · ${downloadTask?.version || downloadTask?.id?.substring(0, 8) || ''}`"
+            <n-drawer-content
+                :title="t('projectDetail.downloadDrawerTitle', { version: downloadTask?.version || downloadTask?.id?.substring(0, 8) || '' })"
                 closable>
                 <div v-if="downloadTask" class="flex flex-col gap-6">
                     <!-- 体验版二维码 -->
                     <div v-if="downloadTask.qrcodePath"
                         class="flex flex-col items-center gap-3 p-6 rounded-xl bg-zinc-800/60 border border-white/5">
-                        <p class="text-sm text-zinc-400 font-medium">体验版二维码</p>
+                        <p class="text-sm text-zinc-400 font-medium">{{ t('projectDetail.download.qrcode') }}</p>
                         <img :src="resolveStorageUrl(downloadTask.qrcodePath)" alt="QR Code"
                             class="w-48 h-48 rounded-lg object-contain bg-white p-2" />
-                        <p class="text-xs text-zinc-500">使用微信扫码体验</p>
+                        <p class="text-xs text-zinc-500">{{ t('projectDetail.download.qrcodeScan') }}</p>
                         <n-button size="small" dashed
                             @click="downloadFile(downloadTask!.qrcodePath!, `qrcode-${downloadTask!.version}.jpg`)">
-                            下载二维码图片
+                            {{ t('projectDetail.download.downloadQrcode') }}
                         </n-button>
                     </div>
 
@@ -606,13 +657,13 @@ const memberColumns = [
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">构建产物</p>
+                                <p class="text-sm font-medium text-white">{{ t('projectDetail.download.artifact') }}</p>
                                 <p class="text-xs text-zinc-400">artifact-{{ downloadTask.id }}.zip</p>
                             </div>
                         </div>
                         <n-button type="primary" size="small"
                             @click="downloadFile(downloadTask!.artifactPath!, `artifact-${downloadTask!.version}.zip`)">
-                            下载
+                            {{ t('projectDetail.download.downloadBtn') }}
                         </n-button>
                     </div>
 
@@ -628,20 +679,20 @@ const memberColumns = [
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">构建日志</p>
+                                <p class="text-sm font-medium text-white">{{ t('projectDetail.download.log') }}</p>
                                 <p class="text-xs text-zinc-400">build-{{ downloadTask.id }}.log</p>
                             </div>
                         </div>
                         <n-button size="small" dashed
                             @click="downloadFile(downloadTask!.logPath!, `build-log-${downloadTask!.version}.log`)">
-                            下载
+                            {{ t('projectDetail.download.downloadBtn') }}
                         </n-button>
                     </div>
 
                     <!-- 无任何产物 -->
                     <div v-if="!downloadTask.qrcodePath && !downloadTask.artifactPath && !downloadTask.logPath?.startsWith('/storage')"
                         class="text-center py-10 text-zinc-500 italic">
-                        暂无可下载的产物文件
+                        {{ t('projectDetail.download.noArtifacts') }}
                     </div>
                 </div>
             </n-drawer-content>

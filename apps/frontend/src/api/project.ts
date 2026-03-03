@@ -7,7 +7,8 @@ export interface ProjectDto {
   name: string
   /** 微信小程序 App ID */
   appId?: string
-  repoUrl: string
+  repoUrl?: string
+  repositoryUrl?: string
   /** 框架类型 */
   framework?: FrameworkType
   /** 构建命令 */

@@ -2,14 +2,14 @@
 import Layout from '@/layout/index.vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { darkTheme } from 'naive-ui'
+import { darkTheme, zhCN, dateZhCN } from 'naive-ui'
 
 const route = useRoute()
 const isLogin = computed(() => route.path === '/login')
 </script>
 
 <template>
-  <n-config-provider :theme="darkTheme">
+  <n-config-provider :theme="darkTheme" :locale="zhCN" :date-locale="dateZhCN">
     <n-loading-bar-provider>
       <n-message-provider>
         <n-notification-provider>

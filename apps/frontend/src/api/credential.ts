@@ -5,8 +5,7 @@ export interface CredentialDto {
   name: string
   type: 'ssh' | 'https'
   username?: string
-  password?: string
-  privateKey?: string
+  secret?: string
 }
 
 export function getCredentials() {

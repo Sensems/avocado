@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, computed } from 'vue'
 import { getUsers, updateUserStatus, createUser, updateUser, deleteUser } from '@/api/user'
 import type { UserDto } from '@/api/user'
 import { useMessage, useDialog, NTag, NSwitch, NButton } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 
 const message = useMessage()
 const dialog = useDialog()
+const { t } = useI18n()
 
 const loading = ref(false)
 const users = ref<UserDto[]>([])
@@ -34,33 +36,33 @@ const fetchUsers = async () => {
     }
 }
 
-const columns = [
-    { title: 'Username', key: 'username', minWidth: 150 },
+const columns = computed(() => [
+    { title: t('admin.users.colUsername'), key: 'username', minWidth: 150 },
     {
-        title: 'Role', key: 'role', width: 150, render(row: UserDto) {
-            return h(NTag, { type: row.isSuperAdmin ? 'error' : 'info', size: 'small', bordered: false }, { default: () => row.isSuperAdmin ? 'Super Admin' : 'User' })
+        title: t('admin.users.colRole'), key: 'role', width: 150, render(row: UserDto) {
+            return h(NTag, { type: row.isSuperAdmin ? 'error' : 'info', size: 'small', bordered: false }, { default: () => row.isSuperAdmin ? t('admin.users.roles.superAdmin') : t('admin.users.roles.user') })
         }
     },
     {
-        title: 'Status', key: 'status', width: 100, render(row: UserDto) {
+        title: t('admin.users.colStatus'), key: 'status', width: 100, render(row: UserDto) {
             return h(NSwitch, { value: row.status === 'active', onUpdateValue: () => handleStatusChange(row) })
         }
     },
     {
-        title: 'Actions', key: 'actions', width: 120, fixed: 'right' as const, render(row: UserDto) {
+        title: t('admin.users.colActions'), key: 'actions', width: 120, fixed: 'right' as const, render(row: UserDto) {
             return h('div', { class: 'flex gap-2' }, [
-                h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => openEditDialog(row) }, { default: () => 'Edit' }),
-                h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDeleteUser(row) }, { default: () => 'Delete' })
+                h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => openEditDialog(row) }, { default: () => t('common.edit') }),
+                h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDeleteUser(row) }, { default: () => t('common.delete') })
             ])
         }
     }
-]
+])
 
 const handleStatusChange = async (row: UserDto) => {
     if (!row.id) return
     try {
         await updateUserStatus(row.id, row.status === 'active' ? 'disabled' : 'active')
-        message.success('Status updated')
+        message.success(t('admin.users.statusUpdated'))
         fetchUsers()
     } catch (e) {
         console.error(e)
@@ -87,10 +89,10 @@ const handleSubmitUser = async () => {
     try {
         if (dialogType.value === 'add') {
             await createUser(userForm.value)
-            message.success('User created')
+            message.success(t('admin.users.created'))
         } else {
             await updateUser(currentUserId.value, userForm.value)
-            message.success('User updated')
+            message.success(t('admin.users.updated'))
         }
         dialogVisible.value = false
         fetchUsers()
@@ -103,15 +105,15 @@ const handleSubmitUser = async () => {
 
 const handleDeleteUser = (row: UserDto) => {
     dialog.warning({
-        title: 'Confirm',
-        content: `Are you sure you want to delete user ${row.username}?`,
-        positiveText: 'Delete',
-        negativeText: 'Cancel',
+        title: t('admin.users.deleteConfirmTitle'),
+        content: t('admin.users.deleteConfirmContent', { username: row.username }),
+        positiveText: t('admin.users.deleteConfirmOk'),
+        negativeText: t('admin.users.deleteConfirmCancel'),
         onPositiveClick: async () => {
             if (!row.id) return
             try {
                 await deleteUser(row.id)
-                message.success('User deleted')
+                message.success(t('admin.users.deleted'))
                 fetchUsers()
             } catch (e) {
                 console.error(e)
@@ -129,10 +131,10 @@ onMounted(() => {
     <div>
         <div class="flex items-center justify-between mb-8">
             <div>
-                <h2 class="text-3xl font-bold text-white tracking-tight">User Management</h2>
-                <p class="text-zinc-400 mt-1">Manage platform access and privileges.</p>
+                <h2 class="text-3xl font-bold text-white tracking-tight">{{ t('admin.users.title') }}</h2>
+                <p class="text-zinc-400 mt-1">{{ t('admin.users.subtitle') }}</p>
             </div>
-            <n-button type="primary" @click="openAddDialog">Add User</n-button>
+            <n-button type="primary" @click="openAddDialog">{{ t('admin.users.addUser') }}</n-button>
         </div>
 
         <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">
@@ -140,22 +142,24 @@ onMounted(() => {
                 remote :pagination="pagination" />
         </div>
 
-        <n-modal v-model:show="dialogVisible" preset="card" :title="dialogType === 'add' ? 'Add User' : 'Edit User'"
+        <n-modal v-model:show="dialogVisible" preset="card"
+            :title="dialogType === 'add' ? t('admin.users.dialog.addTitle') : t('admin.users.dialog.editTitle')"
             class="max-w-[500px]" :bordered="false">
             <n-form>
-                <n-form-item label="Username" required>
+                <n-form-item :label="t('admin.users.dialog.username')" required>
                     <n-input v-model:value="userForm.username" />
                 </n-form-item>
-                <n-form-item label="Password" :required="dialogType === 'add'">
+                <n-form-item :label="t('admin.users.dialog.password')" :required="dialogType === 'add'">
                     <n-input v-model:value="userForm.password" type="password" show-password-on="click" />
                 </n-form-item>
-                <n-form-item label="Super Admin">
+                <n-form-item :label="t('admin.users.dialog.superAdmin')">
                     <n-switch v-model:value="userForm.isSuperAdmin" />
                 </n-form-item>
             </n-form>
             <div class="flex justify-end gap-4 mt-6">
-                <n-button @click="dialogVisible = false">Cancel</n-button>
-                <n-button type="primary" :loading="submitting" @click="handleSubmitUser">Submit</n-button>
+                <n-button @click="dialogVisible = false">{{ t('common.cancel') }}</n-button>
+                <n-button type="primary" :loading="submitting" @click="handleSubmitUser">{{ t('common.submit')
+                    }}</n-button>
             </div>
         </n-modal>
     </div>

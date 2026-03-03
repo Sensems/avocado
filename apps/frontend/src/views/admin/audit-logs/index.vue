@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, computed } from 'vue'
 import { getAuditLogs } from '@/api/audit-log'
 import type { AuditLogDto } from '@/api/audit-log'
 import { format } from 'date-fns'
 import { NTag } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const loading = ref(false)
 const logs = ref<AuditLogDto[]>([])
 const total = ref(0)
@@ -38,23 +40,21 @@ const pagination = ref({
     }
 })
 
-const columns = [
-    { title: 'User', key: 'username', width: 150 },
+const columns = computed(() => [
+    { title: t('admin.auditLogs.colUser'), key: 'username', width: 150 },
     {
-        title: 'Action', key: 'action', width: 180, render(row: AuditLogDto) {
-            return h(NTag, { type: 'info', size: 'small', bordered: false }, { default: () => row.action || 'Sys Action' })
+        title: t('admin.auditLogs.colAction'), key: 'action', width: 180, render(row: AuditLogDto) {
+            return h(NTag, { type: 'info', size: 'small', bordered: false }, { default: () => row.action || t('admin.auditLogs.defaultAction') })
         }
     },
-    { title: 'Target Resource', key: 'resource', minWidth: 200 },
-    { title: 'IP Address', key: 'ipAddress', width: 150 },
+    { title: t('admin.auditLogs.colResource'), key: 'resource', minWidth: 200 },
+    { title: t('admin.auditLogs.colIp'), key: 'ipAddress', width: 150 },
     {
-        title: 'Timestamp', key: 'createdAt', width: 180, render(row: AuditLogDto) {
+        title: t('admin.auditLogs.colTimestamp'), key: 'createdAt', width: 180, render(row: AuditLogDto) {
             return h('span', { class: 'text-zinc-400 text-sm' }, formatDate(row.createdAt))
         }
     }
-]
-
-// Removed handlePageChange since it's merged mechanically
+])
 
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
@@ -76,10 +76,10 @@ onMounted(() => {
     <div>
         <div class="flex items-center justify-between mb-8">
             <div>
-                <h2 class="text-3xl font-bold text-white tracking-tight">Audit Logs</h2>
-                <p class="text-zinc-400 mt-1">Review system-wide actions and security events.</p>
+                <h2 class="text-3xl font-bold text-white tracking-tight">{{ t('admin.auditLogs.title') }}</h2>
+                <p class="text-zinc-400 mt-1">{{ t('admin.auditLogs.subtitle') }}</p>
             </div>
-            <n-button @click="fetchLogs" dashed>Refresh</n-button>
+            <n-button @click="fetchLogs" dashed>{{ t('common.refresh') }}</n-button>
         </div>
 
         <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">

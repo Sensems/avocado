@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, computed } from 'vue'
 import { getRobots, createRobot, deleteRobot, testRobot } from '@/api/robot'
 import type { RobotDto } from '@/api/robot'
 import { useMessage, useDialog, NTag, NButton } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 
 const message = useMessage()
 const dialog = useDialog()
+const { t } = useI18n()
 
 const loading = ref(false)
 const items = ref<RobotDto[]>([])
@@ -31,30 +33,30 @@ const fetchItems = async () => {
   }
 }
 
-const columns = [
-  { title: 'Name', key: 'name', minWidth: 150 },
+const columns = computed(() => [
+  { title: t('admin.robots.colName'), key: 'name', minWidth: 150 },
   {
-    title: 'Platform type', key: 'platform', width: 120, render(row: RobotDto) {
+    title: t('admin.robots.colPlatform'), key: 'platform', width: 120, render(row: RobotDto) {
       return h(NTag, { type: row.platform === 'wecom' ? 'success' : row.platform === 'dingtalk' ? 'info' : 'warning', size: 'small', bordered: false }, { default: () => row.platform?.toUpperCase() })
     }
   },
   {
-    title: 'Actions', key: 'actions', width: 200, fixed: 'right' as const, render(row: RobotDto) {
+    title: t('admin.robots.colActions'), key: 'actions', width: 200, fixed: 'right' as const, render(row: RobotDto) {
       return h('div', { class: 'flex gap-2' }, [
-        h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleTest(row.id as string) }, { default: () => 'Test' }),
-        h(NButton, { text: true, type: 'info', size: 'small' }, { default: () => 'Edit' }),
-        h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDelete(row.id as string) }, { default: () => 'Delete' })
+        h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleTest(row.id as string) }, { default: () => t('common.test') }),
+        h(NButton, { text: true, type: 'info', size: 'small' }, { default: () => t('common.edit') }),
+        h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDelete(row.id as string) }, { default: () => t('common.delete') })
       ])
     }
   }
-]
+])
 
 const handleCreate = async () => {
   if (!form.value.name || !form.value.webhookUrl) return
   submitting.value = true
   try {
     await createRobot(form.value)
-    message.success('Robot added')
+    message.success(t('admin.robots.added'))
     dialogVisible.value = false
     form.value = { name: '', platform: 'wecom', webhookUrl: '', secret: '' }
     fetchItems()
@@ -67,14 +69,14 @@ const handleCreate = async () => {
 
 const handleDelete = async (id: string) => {
   dialog.warning({
-    title: 'Warning',
-    content: 'Delete this notification robot?',
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
+    title: t('admin.robots.deleteConfirmTitle'),
+    content: t('admin.robots.deleteConfirmContent'),
+    positiveText: t('admin.robots.deleteConfirmOk'),
+    negativeText: t('admin.robots.deleteConfirmCancel'),
     onPositiveClick: async () => {
       try {
         await deleteRobot(id)
-        message.success('Deleted successfully')
+        message.success(t('admin.robots.deleted'))
         fetchItems()
       } catch (e) {
         console.error(e)
@@ -86,9 +88,9 @@ const handleDelete = async (id: string) => {
 const handleTest = async (id: string) => {
   try {
     await testRobot(id)
-    message.success('Test message sent successfully')
+    message.success(t('admin.robots.testSuccess'))
   } catch (e) {
-    message.error('Failed to send test message')
+    message.error(t('admin.robots.testFailed'))
     console.error(e)
   }
 }
@@ -102,37 +104,41 @@ onMounted(() => {
   <div>
     <div class="flex items-center justify-between mb-8">
       <div>
-        <h2 class="text-3xl font-bold text-white tracking-tight">IM Notification Robots</h2>
-        <p class="text-zinc-400 mt-1">Configure Webhook endpoints for build alerts.</p>
+        <h2 class="text-3xl font-bold text-white tracking-tight">{{ t('admin.robots.title') }}</h2>
+        <p class="text-zinc-400 mt-1">{{ t('admin.robots.subtitle') }}</p>
       </div>
-      <n-button type="primary" @click="dialogVisible = true">Add Robot</n-button>
+      <n-button type="primary" @click="dialogVisible = true">{{ t('admin.robots.addRobot') }}</n-button>
     </div>
 
     <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">
       <n-data-table :columns="columns" :data="items" :loading="loading" :bordered="false" class="dark-table" />
     </div>
 
-    <n-modal v-model:show="dialogVisible" preset="card" title="Add IM Robot" class="max-w-[500px]" :bordered="false">
+    <n-modal v-model:show="dialogVisible" preset="card" :title="t('admin.robots.dialog.title')" class="max-w-[500px]"
+      :bordered="false">
       <n-form>
-        <n-form-item label="Robot Name" required>
-          <n-input v-model:value="form.name" placeholder="E.g. Prod Build Alerts" />
+        <n-form-item :label="t('admin.robots.dialog.name')" required>
+          <n-input v-model:value="form.name" :placeholder="t('admin.robots.dialog.namePlaceholder')" />
         </n-form-item>
-        <n-form-item label="Platform Type">
-          <n-select v-model:value="form.platform"
-            :options="[{ label: 'WeCom', value: 'wecom' }, { label: 'DingTalk', value: 'dingtalk' }, { label: 'Feishu / Lark', value: 'feishu' }]" />
+        <n-form-item :label="t('admin.robots.dialog.platform')">
+          <n-select v-model:value="form.platform" :options="[
+            { label: t('admin.robots.platforms.wecom'), value: 'wecom' },
+            { label: t('admin.robots.platforms.dingtalk'), value: 'dingtalk' },
+            { label: t('admin.robots.platforms.feishu'), value: 'feishu' }
+          ]" />
         </n-form-item>
 
-        <n-form-item label="Webhook URL" required>
+        <n-form-item :label="t('admin.robots.dialog.webhookUrl')" required>
           <n-input v-model:value="form.webhookUrl" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send..." />
         </n-form-item>
 
-        <n-form-item label="Secret (Optional)">
-          <n-input v-model:value="form.secret" placeholder="Used for signature verification" />
+        <n-form-item :label="t('admin.robots.dialog.secret')">
+          <n-input v-model:value="form.secret" :placeholder="t('admin.robots.dialog.secretPlaceholder')" />
         </n-form-item>
       </n-form>
       <div class="flex justify-end gap-4 mt-6">
-        <n-button @click="dialogVisible = false">Cancel</n-button>
-        <n-button type="primary" :loading="submitting" @click="handleCreate">Save</n-button>
+        <n-button @click="dialogVisible = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="submitting" @click="handleCreate">{{ t('common.save') }}</n-button>
       </div>
     </n-modal>
   </div>
