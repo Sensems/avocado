@@ -23,6 +23,14 @@ export function createRobot(data: RobotDto) {
   }) as Promise<any>
 }
 
+export function updateRobot(id: string, data: Partial<RobotDto>) {
+  return request({
+    url: `/im-robots/${id}`,
+    method: 'patch',
+    data,
+  }) as Promise<any>
+}
+
 export function deleteRobot(id: string) {
   return request({
     url: `/im-robots/${id}`,

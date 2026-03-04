@@ -7,6 +7,7 @@ import {
   IsArray,
   IsEnum,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FrameworkType } from '@prisma/client';
 
@@ -34,6 +35,10 @@ export class CreateProjectDto {
   gitCredentialId?: string;
 
   @ApiPropertyOptional({ description: '用于接收构建通知的 IM 机器人 ID 数组' })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return Array.isArray(value) ? value : [value];
+  })
   @IsArray({ message: 'IM 机器人 ID 必须是数组' })
   @IsUUID('all', { each: true, message: 'IM 机器人 ID 必须是有效的 UUID' })
   @IsOptional()
@@ -65,4 +70,10 @@ export class CreateProjectDto {
   @IsEnum(FrameworkType, { message: '框架类型无效' })
   @IsOptional()
   framework?: FrameworkType;
+
+  @ApiPropertyOptional({ description: 'Webhook 密钥', example: 'my-secret-123' })
+  @IsString({ message: 'Webhook 密钥必须是字符串' })
+  @IsOptional()
+  @MaxLength(255, { message: 'Webhook 密钥不能超过255个字符' })
+  webhookSecret?: string;
 }

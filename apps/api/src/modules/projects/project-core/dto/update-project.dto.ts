@@ -1,6 +1,7 @@
 import { PartialType } from '@nestjs/swagger';
 import { CreateProjectDto } from './create-project.dto';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateProjectDto extends PartialType(CreateProjectDto) {
@@ -15,6 +16,11 @@ export class UpdateProjectDto extends PartialType(CreateProjectDto) {
 
   @ApiPropertyOptional({ description: '构建历史保留条数', example: 10 })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    const num = Number(value);
+    return isNaN(num) ? undefined : num;
+  })
   retentionCount?: number;
 }
 

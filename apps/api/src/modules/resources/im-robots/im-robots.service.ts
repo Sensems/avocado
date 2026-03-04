@@ -2,6 +2,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateImRobotDto } from './dto/create-im-robot.dto';
+import { UpdateImRobotDto } from './dto/update-im-robot.dto';
 import { encrypt, decrypt } from '../../../common/utils/crypto.util';
 import { User, ImPlatform, ImRobot } from '@prisma/client';
 import axios from 'axios';
@@ -55,6 +56,24 @@ export class ImRobotsService {
       this.prisma.imRobot.count(),
     ]);
     return { items, total };
+  }
+
+  async update(id: string, updateDto: UpdateImRobotDto) {
+    const existing = await this.prisma.imRobot.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('找不到 IM 机器人');
+
+    const data: Record<string, unknown> = {};
+    if (updateDto.name !== undefined) data.name = updateDto.name;
+    if (updateDto.platform !== undefined) data.platform = updateDto.platform;
+    if (updateDto.webhookUrl !== undefined) data.webhookUrl = updateDto.webhookUrl;
+    // 前端发的字段名是 secret，留空则不覆盖原 secretToken
+    if (updateDto.secret) data.secretToken = encrypt(updateDto.secret);
+
+    return await this.prisma.imRobot.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, platform: true, webhookUrl: true, createdAt: true },
+    });
   }
 
   async remove(id: string) {

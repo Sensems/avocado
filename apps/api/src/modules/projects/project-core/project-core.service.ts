@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -6,13 +7,17 @@ import { AddProjectMemberDto } from './dto/add-project-member.dto';
 import { User, ProjectRole, Prisma, FrameworkType } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class ProjectCoreService {
   /** 密钥文件存储目录 */
   private readonly privateKeysDir = path.join(process.cwd(), 'private-keys');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async create(createDto: CreateProjectDto, user: User, file?: Express.Multer.File) {
     // 检查项目名称是否存在
@@ -23,6 +28,9 @@ export class ProjectCoreService {
 
     return await this.prisma.$transaction(async (tx) => {
       // 创建项目
+      // 用户要求：新建项目时自动生成 webhookSecret
+      const generatedWebhookSecret = randomBytes(16).toString('hex');
+
       const project = await tx.project.create({
         data: {
           name: createDto.name,
@@ -31,6 +39,7 @@ export class ProjectCoreService {
           gitCredentialId: createDto.gitCredentialId as string,
           imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
           framework: createDto.framework ?? FrameworkType.native,
+          webhookSecret: generatedWebhookSecret,
         },
       });
 
@@ -69,15 +78,21 @@ export class ProjectCoreService {
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
+          include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } },
         }),
         this.prisma.project.count(),
       ]);
-      return { items, total };
+      const mappedItems = items.map((p) => ({ ...p, lastBuild: p.buildTasks[0] || null }));
+      return { items: mappedItems, total };
     } else {
       const [memberships, total] = await Promise.all([
         this.prisma.projectMember.findMany({
           where: { userId: user.id },
-          include: { project: true },
+          include: { 
+            project: {
+              include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } }
+            } 
+          },
           orderBy: { project: { createdAt: 'desc' } },
           skip,
           take: limit,
@@ -86,7 +101,7 @@ export class ProjectCoreService {
           where: { userId: user.id },
         }),
       ]);
-      const items = memberships.map((m) => ({ ...m.project, myRole: m.role }));
+      const items = memberships.map((m) => ({ ...m.project, lastBuild: m.project.buildTasks[0] || null, myRole: m.role }));
       return { items, total };
     }
   }
@@ -112,11 +127,24 @@ export class ProjectCoreService {
       throw new NotFoundException('项目不存在');
     }
 
-    return project;
+    // 由后端拼接完整的 webhookUrl，避免前端硬编码路径
+    const apiBaseUrl = this.configService.get<string>('API_BASE_URL', '');
+    const webhookUrl = `${apiBaseUrl}/api/build-tasks/webhook/${project.id}`;
+
+    return { ...project, webhookUrl };
   }
 
-  async update(id: string, updateDto: UpdateProjectDto) {
-    await this.findOne(id); // 检查是否存在
+  async update(id: string, updateDto: UpdateProjectDto, file?: Express.Multer.File) {
+    const project = await this.findOne(id); // 检查是否存在
+
+    // 如果上传了新的密钥文件，保存并更新路径
+    let privateKeyPath = project.privateKeyPath;
+    if (file) {
+      await fs.mkdir(this.privateKeysDir, { recursive: true });
+      const keyFilePath = path.join(this.privateKeysDir, `${project.id}.key`);
+      await fs.writeFile(keyFilePath, file.buffer);
+      privateKeyPath = keyFilePath;
+    }
 
     return this.prisma.project.update({
       where: { id },
@@ -131,7 +159,9 @@ export class ProjectCoreService {
         buildCommand: updateDto.buildCommand,
         defaultBranch: updateDto.defaultBranch ?? null,
         retentionCount: updateDto.retentionCount,
-      },
+        webhookSecret: updateDto.webhookSecret,
+        privateKeyPath,
+      } as any,
     });
   }
 

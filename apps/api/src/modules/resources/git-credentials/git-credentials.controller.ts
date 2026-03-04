@@ -1,9 +1,12 @@
 import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
-import { Controller, Get, Post, Body, Param, Delete, Request, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Delete, Patch, Request, UseGuards, Query } from '@nestjs/common';
 import { GitCredentialsService } from './git-credentials.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
+import { UpdateGitCredentialDto } from './dto/update-git-credential.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../../common/guards/roles.guard';
+import { RequireSuperAdmin } from '../../../common/decorators/roles.decorator';
 import { User } from '@prisma/client';
 import type { Request as ExpressRequest } from 'express';
 
@@ -15,6 +18,8 @@ export class GitCredentialsController {
   constructor(private readonly gitCredentialsService: GitCredentialsService) {}
 
   @Post()
+  @UseGuards(RolesGuard)
+  @RequireSuperAdmin()
   @ApiOperation({ summary: '添加新的 Git 凭证（通过 AES 安全存储）' })
   @ApiResultResponse()
 
@@ -39,7 +44,18 @@ export class GitCredentialsController {
     return this.gitCredentialsService.findAll(pageNumber, limitNumber);
   }
 
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @RequireSuperAdmin()
+  @ApiOperation({ summary: '更新 Git 凭证（secret 留空则不修改）' })
+  @ApiResultResponse()
+  update(@Param('id') id: string, @Body() updateDto: UpdateGitCredentialDto) {
+    return this.gitCredentialsService.update(id, updateDto);
+  }
+
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @RequireSuperAdmin()
   @ApiOperation({ summary: '删除 Git 凭证' })
   @ApiResultResponse()
 

@@ -18,6 +18,7 @@ import { BuildTasksModule } from './modules/build/build-tasks/build-tasks.module
 import { WsModule } from './modules/ws/ws.module';
 import { ArtifactsModule } from './modules/build/artifacts/artifacts.module';
 import { AuditLogsModule } from './modules/resources/audit-logs/audit-logs.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { AuditLogsModule } from './modules/resources/audit-logs/audit-logs.modul
     WsModule,
     ArtifactsModule,
     AuditLogsModule,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [

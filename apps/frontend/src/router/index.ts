@@ -53,6 +53,11 @@ const routes: Array<RouteRecordRaw> = [
       },
 
     ]
+  },
+  {
+    path: '/403',
+    name: 'Forbidden',
+    component: () => import('../views/error/403.vue'),
   }
 ]
 
@@ -61,7 +66,7 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const token = localStorage.getItem('avocado_ci_token') || localStorage.getItem('avocado-token')
   
   // if navigating to login, allow
@@ -75,6 +80,23 @@ router.beforeEach((to, _from, next) => {
     return next({ path: '/login', query: { redirect: to.fullPath } })
   }
   
+  if (to.path.startsWith('/admin')) {
+    const { useAuthStore } = await import('../store/auth')
+    const authStore = useAuthStore()
+    
+    if (!authStore.userInfo) {
+      try {
+        await authStore.fetchUserInfo()
+      } catch (e) {
+        return next({ path: '/login' })
+      }
+    }
+
+    if (!authStore.userInfo?.isSuperAdmin) {
+      return next({ path: '/403' })
+    }
+  }
+
   next()
 })
 

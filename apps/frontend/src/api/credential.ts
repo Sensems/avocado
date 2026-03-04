@@ -3,7 +3,7 @@ import request from '@/utils/request'
 export interface CredentialDto {
   id?: string
   name: string
-  type: 'ssh' | 'https'
+  type: 'ssh' | 'https' | 'pat'
   username?: string
   secret?: string
 }
@@ -19,6 +19,14 @@ export function createCredential(data: CredentialDto) {
   return request({
     url: '/git-credentials',
     method: 'post',
+    data,
+  }) as Promise<any>
+}
+
+export function updateCredential(id: string, data: Partial<CredentialDto>) {
+  return request({
+    url: `/git-credentials/${id}`,
+    method: 'patch',
     data,
   }) as Promise<any>
 }

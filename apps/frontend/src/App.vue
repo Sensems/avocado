@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import Layout from '@/layout/index.vue'
-import { computed } from 'vue'
+import { computed, provide } from 'vue'
 import { useRoute } from 'vue-router'
-import { darkTheme, zhCN, dateZhCN } from 'naive-ui'
+import { zhCN, dateZhCN } from 'naive-ui'
+import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const isLogin = computed(() => route.path === '/login')
+
+const { naiveTheme, isDark, toggleTheme } = useTheme()
+provide('isDark', isDark)
+provide('toggleTheme', toggleTheme)
 </script>
 
 <template>
-  <n-config-provider :theme="darkTheme" :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :theme="naiveTheme" :locale="zhCN" :date-locale="dateZhCN">
     <n-loading-bar-provider>
       <n-message-provider>
         <n-notification-provider>

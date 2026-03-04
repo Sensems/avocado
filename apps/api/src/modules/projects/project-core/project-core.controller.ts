@@ -108,10 +108,21 @@ export class ProjectCoreController {
   @Put(':id')
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '更新项目设置（需要维护者）' })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @UseInterceptors(FileInterceptor('privateKeyFile'))
   @ApiResultResponse()
-
-  update(@Param('id') id: string, @Body() updateDto: UpdateProjectDto) {
-    return this.projectCoreService.update(id, updateDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateProjectDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 10 * 1024 })],
+        fileIsRequired: false,
+      }),
+    )
+    file?: Express.Multer.File,
+  ) {
+    return this.projectCoreService.update(id, updateDto, file);
   }
 
   @Delete(':id')

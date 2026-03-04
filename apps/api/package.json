@@ -43,6 +43,7 @@
     "bullmq": "^5.70.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
+    "date-fns": "^4.1.0",
     "fs-extra": "^11.3.3",
     "ioredis": "^5.9.3",
     "miniprogram-ci": "^2.1.26",

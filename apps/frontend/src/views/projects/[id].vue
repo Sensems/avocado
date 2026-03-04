@@ -76,6 +76,27 @@ const members = ref<any[]>([])
 const memberDialog = ref(false)
 const memberForm = ref({ userId: '', role: 'developer' })
 
+// Webhook & Keys Logic
+const newPrivateKeyFile = ref<File | null>(null)
+
+const copyWebhookUrl = () => {
+    const url = project.value?.webhookUrl ?? ''
+    navigator.clipboard.writeText(url).then(() => {
+        message.success(t('projectDetail.settings.copySuccess'))
+    }).catch(() => {
+        message.error('复制失败，请手动选择复制')
+    })
+}
+
+const generateSecret = () => {
+    if (!project.value) return
+    // Simple random hex generation
+    const array = new Uint8Array(16)
+    window.crypto.getRandomValues(array)
+    const hex = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+    project.value.webhookSecret = hex
+}
+
 /** 通用：获取仓库分支列表 */
 const loadBranches = async (repoUrl: string, credentialId?: string): Promise<string[]> => {
     try {
@@ -248,9 +269,12 @@ const handleUpdateSettings = async () => {
             imRobotIds: project.value.imRobotIds,
             retentionCount: project.value.retentionCount,
             defaultBranch: project.value.defaultBranch,
+            webhookSecret: project.value.webhookSecret,
+            privateKeyFile: newPrivateKeyFile.value,
         }
         await updateProject(projectId, payload)
         message.success(t('projectDetail.settings.saveSuccess'))
+        newPrivateKeyFile.value = null
         fetchProject()
     } catch (e) {
         console.error(e)
@@ -553,6 +577,75 @@ const memberColumns = computed(() => [
                             <!-- 集成 -->
                             <p class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">{{
                                 t('projectDetail.settings.sectionIntegrations') }}</p>
+
+                            <n-form-item :label="t('projectDetail.settings.webhookUrl')">
+                                <div class="flex gap-2 w-full items-center">
+                                    <!-- <span
+                                        class="px-3 py-1.5 rounded text-sm font-mono select-all flex-1 border overflow-hidden text-ellipsis whitespace-nowrap">{{
+                                            webhookUrl }}</span> -->
+                                    <n-input readonly :value="project?.webhookUrl ?? ''" class="flex-1" />
+                                    <n-button dashed @click="copyWebhookUrl"
+                                        :title="t('projectDetail.settings.copyWebhookUrl')">
+                                        <template #icon>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z">
+                                                </path>
+                                            </svg>
+                                        </template>
+                                    </n-button>
+                                </div>
+                            </n-form-item>
+
+                            <n-form-item :label="t('projectDetail.settings.webhookSecret')">
+                                <div class="flex gap-2 w-full">
+                                    <n-input v-model:value="project.webhookSecret" type="password"
+                                        show-password-on="click"
+                                        :placeholder="t('projectDetail.settings.webhookSecretPlaceholder')"
+                                        class="flex-1" />
+                                    <n-button dashed @click="generateSecret"
+                                        :title="t('projectDetail.settings.generateRandomWebhookSecret')">
+                                        <template #icon>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                                                </path>
+                                            </svg>
+                                        </template>
+                                    </n-button>
+                                </div>
+                            </n-form-item>
+
+                            <n-form-item :label="t('projectDetail.settings.privateKeyFile')">
+                                <n-upload accept=".key" :max="1" :show-file-list="true" :default-upload="false" @change="(data: any) => {
+                                    if (data.fileList && data.fileList.length > 0) {
+                                        newPrivateKeyFile = data.fileList[0].file;
+                                    } else {
+                                        newPrivateKeyFile = null;
+                                    }
+                                }" class="w-full">
+                                    <n-button dashed class="w-full justify-start text-zinc-400">
+                                        <template #icon>
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13">
+                                                </path>
+                                            </svg>
+                                        </template>
+                                        {{ t('projectDetail.settings.privateKeyFilePlaceholder') }}
+                                    </n-button>
+                                </n-upload>
+                                <template #feedback v-if="project.privateKeyPath">
+                                    <span class="text-xs text-emerald-500 flex items-center gap-1 mt-1">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                        已有上传的密钥文件
+                                    </span>
+                                </template>
+                            </n-form-item>
+
                             <n-form-item :label="t('projectDetail.settings.gitCredential')">
                                 <div class="flex gap-2 w-full">
                                     <n-select v-model:value="project.gitCredentialId"

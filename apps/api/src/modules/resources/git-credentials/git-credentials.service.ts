@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
+import { UpdateGitCredentialDto } from './dto/update-git-credential.dto';
 import { encrypt, decrypt } from '../../../common/utils/crypto.util';
 import { User } from '@prisma/client';
 import { exec } from 'child_process';
@@ -58,6 +59,24 @@ export class GitCredentialsService {
       this.prisma.gitCredential.count(),
     ]);
     return { items, total };
+  }
+
+  async update(id: string, updateDto: UpdateGitCredentialDto) {
+    const existing = await this.prisma.gitCredential.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('凭证不存在');
+
+    const data: Record<string, unknown> = {};
+    if (updateDto.name !== undefined) data.name = updateDto.name;
+    if (updateDto.type !== undefined) data.type = updateDto.type;
+    if (updateDto.username !== undefined) data.username = updateDto.username;
+    // 仅在 secret 非空时才覆盖加密存储的密钥
+    if (updateDto.secret) data.secret = encrypt(updateDto.secret);
+
+    return await this.prisma.gitCredential.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, type: true, username: true, createdAt: true },
+    });
   }
 
   async remove(id: string) {

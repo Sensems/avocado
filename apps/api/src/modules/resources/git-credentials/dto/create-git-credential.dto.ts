@@ -12,7 +12,7 @@ export class CreateGitCredentialDto {
   @MaxLength(100, { message: '名称不能超过100个字符' })
   name!: string;
 
-  @ApiProperty({ enum: GitCredentialType, description: '凭证类型（ssh 或 https）' })
+  @ApiProperty({ enum: GitCredentialType, description: '凭证类型（ssh / https / pat）' })
   @IsEnum(GitCredentialType, { message: '凭证类型无效' })
   @IsNotEmpty({ message: '凭证类型不能为空' })
   type!: GitCredentialType;

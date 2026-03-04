@@ -22,6 +22,7 @@ async function bootstrap() {
   // 编译后 __dirname = dist/src，需向上两级到项目根目录
   app.useStaticAssets(join(__dirname, '..', '..', 'public'));
 
+  app.setGlobalPrefix('api');
   app.enableCors();
 
   // Global Pipes

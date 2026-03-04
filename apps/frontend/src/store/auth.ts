@@ -27,7 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     userInfo.value = null
     localStorage.removeItem('avocado-token')
-    router.push('/login')
+    router.replace('/login')
   }
 
   const fetchUserInfo = async () => {
@@ -48,4 +48,6 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     fetchUserInfo
   }
+}, {
+  persist: true
 })

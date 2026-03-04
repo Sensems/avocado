@@ -82,7 +82,7 @@ onMounted(() => {
             <n-button @click="fetchLogs" dashed>{{ t('common.refresh') }}</n-button>
         </div>
 
-        <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">
+        <div class="bg-zinc-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl max-w-[1055px]">
             <n-data-table remote :columns="columns" :data="logs" :loading="loading" :bordered="false" class="dark-table"
                 :pagination="pagination" />
         </div>

@@ -1,14 +1,10 @@
 @import "tailwindcss";
 
+/* ===== 全局字体 ===== */
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -26,14 +22,168 @@ body {
   width: 100%;
 }
 
+/* ===== Naive UI 表格分页 ===== */
 .n-data-table__pagination {
   padding-bottom: 10px;
   padding-right: 10px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
+/* ============================================================
+   亮色主题全局覆盖（html.light 时生效）
+   ============================================================ */
+
+/* ---------- 文字颜色 ---------- */
+html.light .text-white {
+  color: #111827 !important;
 }
+html.light .text-zinc-100 {
+  color: #1f2937 !important;
+}
+html.light .text-zinc-300 {
+  color: #374151 !important;
+}
+html.light .text-zinc-400 {
+  color: #6b7280 !important;
+}
+html.light .text-zinc-500 {
+  color: #9ca3af !important;
+}
+html.light .text-zinc-600 {
+  color: #d1d5db !important;
+}
+
+/* group-hover 文字 */
+html.light .group:hover .group-hover\:text-white {
+  color: #111827 !important;
+}
+html.light .group:hover .group-hover\:text-violet-300 {
+  color: #7c3aed !important;
+}
+
+/* ---------- 背景颜色 ---------- */
+html.light .bg-zinc-950 {
+  background-color: #f8fafc !important;
+}
+html.light .bg-zinc-900 {
+  background-color: #ffffff !important;
+}
+/* 主卡片容器（项目详情 main tabs、表格容器等） */
+html.light .bg-zinc-900.border {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 16px rgba(0, 0, 0, 0.06) !important;
+}
+html.light .bg-zinc-900\/50,
+html.light .bg-zinc-900\/80 {
+  background-color: rgba(248, 250, 252, 0.8) !important;
+}
+html.light .bg-zinc-800 {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-zinc-800\/60 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+/* 项目卡片头像圆圈 */
+html.light .bg-zinc-800.flex.items-center.justify-center {
+  background-color: #e2e8f0 !important;
+}
+
+/* dashboard 统计卡片 */
+html.light .bg-zinc-900.border.border-white\/5.hover\:border-white\/20 {
+  background-color: #ffffff !important;
+}
+
+/* ---------- 边框颜色 ---------- */
+html.light .border-white\/5 {
+  border-color: #e2e8f0 !important;
+}
+html.light .border-white\/10 {
+  border-color: #cbd5e1 !important;
+}
+html.light .border-white\/20 {
+  border-color: #94a3b8 !important;
+}
+
+/* hover border */
+html.light .hover\:border-white\/20:hover {
+  border-color: #94a3b8 !important;
+}
+html.light .hover\:border-violet-500\/50:hover {
+  border-color: rgba(139, 92, 246, 0.5) !important;
+}
+
+/* ---------- Admin 侧边栏 ---------- */
+html.light .hover\:bg-white\/5:hover {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-white\/5 {
+  background-color: #f1f5f9 !important;
+}
+
+/* ---------- 终端组件：保持黑色不变（xterm 内部不受影响） ---------- */
+/* terminal-wrapper 自身的 bg 保持深色，无需覆盖 */
+
+/* ---------- 下载面板（项目详情右侧 Drawer） ---------- */
+html.light .bg-zinc-800\/60.border.border-white\/5 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ---------- 分支标签 chip ---------- */
+html.light .bg-zinc-800.text-zinc-300 {
+  background-color: #f1f5f9 !important;
+  color: #374151 !important;
+}
+
+/* ---------- 版本号 badge（buildColumns render） ---------- */
+html.light .bg-zinc-800.px-2.py-1.rounded {
+  background-color: #f1f5f9 !important;
+  color: #374151 !important;
+}
+
+/* ---------- 空状态 / italic placeholder ---------- */
+html.light .text-zinc-500.italic {
+  color: #9ca3af !important;
+}
+
+/* ---------- section 标题（UPPERCASE tracking-wider） ---------- */
+html.light .text-zinc-500.uppercase {
+  color: #9ca3af !important;
+}
+
+/* ---------- 阴影 ---------- */
+html.light .shadow-xl {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06) !important;
+}
+html.light .shadow-2xl {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ---------- 发光 hover shadow（项目卡片）----------  */
+html.light .hover\:shadow-\[0_0_30px_rgba\(139\,92\,246\,0\.15\)\]:hover {
+  box-shadow: 0 4px 24px rgba(139, 92, 246, 0.12) !important;
+}
+
+/* ============================================================
+   亮色下 Naive UI 组件自定义微调
+   ============================================================ */
+
+/* tab 下划线颜色不变，让 tabs 区域背景与卡片融合 */
+html.light :deep(.n-tabs-pane-wrapper) {
+  background: transparent;
+}
+
+/* ---------- 登录页背景 ---------- */
+html.light .h-screen.bg-zinc-900 {
+  background-color: #f1f5f9 !important;
+}
+html.light .bg-zinc-900\/40 {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ---------- Admin 侧边栏激活状态 ---------- */
+html.light .active-class {
+  background-color: #e0e7ff !important;
+  color: #4f46e5 !important;
+}
+
