@@ -30,8 +30,10 @@ export class DashboardService {
 
     const buildTrendsMap = new Map<string, { date: string; success: number; failed: number }>();
     for (let i = 0; i < 7; i++) {
-       const dateStr = subDays(today, 6 - i).toISOString().split('T')[0];
-       buildTrendsMap.set(dateStr, { date: dateStr, success: 0, failed: 0 });
+      const dateStr = subDays(today, 6 - i)
+        .toISOString()
+        .split('T')[0];
+      buildTrendsMap.set(dateStr, { date: dateStr, success: 0, failed: 0 });
     }
 
     for (const task of buildTasks) {
@@ -51,7 +53,7 @@ export class DashboardService {
         _all: true,
       },
     });
-    
+
     const frameworkDistribution = projectGroupByFramework.map((item) => ({
       name: item.framework,
       value: item._count._all,
@@ -71,14 +73,14 @@ export class DashboardService {
       take: 5,
     });
 
-    const topProjectsRawIds = topProjectsRaw.map(p => p.projectId);
+    const topProjectsRawIds = topProjectsRaw.map((p) => p.projectId);
     const topProjectDetails = await this.prisma.project.findMany({
       where: { id: { in: topProjectsRawIds } },
-      select: { id: true, name: true }
+      select: { id: true, name: true },
     });
 
-    const topProjects = topProjectsRaw.map(p => {
-      const detail = topProjectDetails.find(d => d.id === p.projectId);
+    const topProjects = topProjectsRaw.map((p) => {
+      const detail = topProjectDetails.find((d) => d.id === p.projectId);
       return {
         id: p.projectId,
         name: detail?.name || 'Unknown',
@@ -105,14 +107,14 @@ export class DashboardService {
       },
     });
 
-    const recentActivity = recentActivityRaw.map(item => ({
-       id: item.id.toString(), // BigInt serialized to String
-       status: item.status,
-       version: item.version,
-       branch: item.branch,
-       createdAt: item.createdAt,
-       projectName: item.project.name,
-       triggerUser: item.triggerUser.username
+    const recentActivity = recentActivityRaw.map((item) => ({
+      id: item.id.toString(), // BigInt serialized to String
+      status: item.status,
+      version: item.version,
+      branch: item.branch,
+      createdAt: item.createdAt,
+      projectName: item.project.name,
+      triggerUser: item.triggerUser.username,
     }));
 
     return {

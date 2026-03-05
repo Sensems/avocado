@@ -20,7 +20,14 @@ import { ProjectCoreService } from './project-core.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ProjectGuard } from '../../../common/guards/project.guard';
 import { User, ProjectRole } from '@prisma/client';
@@ -84,7 +91,6 @@ export class ProjectCoreController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 15' })
   @ApiResultResponse()
-
   findAll(
     @Request() req: ExpressRequest,
     @Query('page') page?: string,
@@ -100,7 +106,6 @@ export class ProjectCoreController {
   @Get(':id')
   @ApiOperation({ summary: '获取项目详情（包含成员和设置）' })
   @ApiResultResponse()
-
   findOne(@Param('id') id: string) {
     return this.projectCoreService.findOne(id);
   }
@@ -129,7 +134,6 @@ export class ProjectCoreController {
   @UseGuards(ProjectGuard) // Re-uses our dynamic ProjectGuard mechanism
   @ApiOperation({ summary: '删除项目（需要维护者角色）' })
   @ApiResultResponse()
-
   remove(@Param('id') id: string) {
     return this.projectCoreService.remove(id);
   }
@@ -140,7 +144,6 @@ export class ProjectCoreController {
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '将用户添加到项目并指定角色（需要维护者）' })
   @ApiResultResponse()
-
   addMember(@Param('id') id: string, @Body() dto: AddProjectMemberDto) {
     return this.projectCoreService.addMember(id, dto);
   }
@@ -149,7 +152,6 @@ export class ProjectCoreController {
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '修改项目成员角色（需要维护者）' })
   @ApiResultResponse()
-
   updateMemberRole(
     @Param('id') id: string,
     @Param('userId') userId: string,
@@ -162,7 +164,6 @@ export class ProjectCoreController {
   @UseGuards(ProjectGuard)
   @ApiOperation({ summary: '移除项目成员（需要维护者）' })
   @ApiResultResponse()
-
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {
     return this.projectCoreService.removeMember(id, userId);
   }

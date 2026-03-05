@@ -1,5 +1,16 @@
 import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
-import { Controller, Get, Post, Body, Param, Delete, Patch, Request, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Patch,
+  Request,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ImRobotsService } from './im-robots.service';
 import { CreateImRobotDto } from './dto/create-im-robot.dto';
 import { UpdateImRobotDto } from './dto/update-im-robot.dto';
@@ -22,7 +33,6 @@ export class ImRobotsController {
   @RequireSuperAdmin()
   @ApiOperation({ summary: '添加新的 IM 机器人（webhook 和可选密钥）' })
   @ApiResultResponse()
-
   create(@Body() createDto: CreateImRobotDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -34,11 +44,7 @@ export class ImRobotsController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 15' })
   @ApiResultResponse()
-
-  findAll(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pageNumber = page ? parseInt(page, 10) : 1;
     const limitNumber = limit ? parseInt(limit, 10) : 15;
     return this.imRobotsService.findAll(pageNumber, limitNumber);
@@ -58,7 +64,6 @@ export class ImRobotsController {
   @RequireSuperAdmin()
   @ApiOperation({ summary: '删除 IM 机器人配置' })
   @ApiResultResponse()
-
   remove(@Param('id') id: string) {
     return this.imRobotsService.remove(id);
   }
@@ -66,7 +71,6 @@ export class ImRobotsController {
   @Post(':id/test')
   @ApiOperation({ summary: '发送测试消息以验证 IM 机器人连通性' })
   @ApiResultResponse()
-
   testConnection(@Param('id') id: string) {
     return this.imRobotsService.testConnection(id);
   }

@@ -31,6 +31,8 @@ export interface ProjectDto {
   privateKeyPath?: string
   /** 后端返回的 Webhook 完整地址 */
   webhookUrl?: string
+  /** 是否开启历史版本功能 */
+  historyEnabled?: boolean
   members?: any[]
 }
 

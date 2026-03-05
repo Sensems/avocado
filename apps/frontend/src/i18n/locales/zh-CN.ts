@@ -115,6 +115,9 @@ const zhCN = {
       viewLogs: '查看日志',
       download: '下载',
       cancelBuild: '取消',
+      deleteConfirmTitle: '确认删除',
+      deleteConfirmContent: '确定要删除这条记录吗？相关的日志和产物将被永久丢弃。',
+      deletedMsg: '记录已成功删除',
     },
 
     terminal: {
@@ -167,6 +170,9 @@ const zhCN = {
       buildCommand: '构建命令',
       distPath: '产物路径',
       retentionCount: '保留数量',
+      retentionCountHint: '当历史版本开启时有效，最多保留 10 份产物',
+      historyEnabled: '历史版本',
+      historyEnabledHint: '开启后将保存每次成功构建的产物 ZIP，便于快速回滚上传',
       defaultBranch: '默认分支',
       defaultBranchPlaceholder: '选择默认构建分支（可输入自定义）',
       defaultBranchHint: '触发构建时将默认使用此分支，也可临时切换其他分支',
@@ -207,6 +213,23 @@ const zhCN = {
       log: '构建日志',
       downloadBtn: '下载',
       noArtifacts: '暂无可下载的产物文件',
+    },
+
+    artifacts: {
+      tabLabel: '历史版本',
+      disabledTitle: '历史版本功能未启用',
+      disabledHint: '开启后，每次成功构建的产物将被自动保存，支持快速回滚上传。\n请前往「设置」Tab 中开启此功能。',
+      colVersion: '版本',
+      colBranch: '分支',
+      colDate: '构建时间',
+      colActions: '操作',
+      reupload: '快速上传',
+      reuploadConfirmTitle: '快速上传确认',
+      reuploadConfirmContent: '将使用此版本保存的产物重新上传到微信小程序，是否确认？',
+      reuploadSuccess: '上传任务已创建，请查看日志',
+      logDrawerTitle: '上传日志 · {version}',
+      noArtifacts: '暂无保存的历史版本产物（需构建成功后自动保存）',
+      deleteConfirmContent: '确定要删除这个历史版本吗？相关的日志和产物将被永久丢弃。',
     },
   },
 

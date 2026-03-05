@@ -4,6 +4,7 @@ export interface BuildTaskDto {
   id: string
   projectId: string
   version: string
+  branch?: string
   commitHash?: string
   commitMessage?: string
   committer?: string
@@ -41,3 +42,25 @@ export function cancelTask(taskId: string) {
     method: 'post'
   }) as Promise<any>
 }
+
+export function deleteTask(taskId: string) {
+  return request({
+    url: `/build-tasks/${taskId}`,
+    method: 'delete'
+  }) as Promise<any>
+}
+
+export function reuploadFromHistory(taskId: string) {
+  return request({
+    url: `/build-tasks/${taskId}/reupload`,
+    method: 'post'
+  }) as Promise<any>
+}
+
+export function getTaskById(taskId: string) {
+  return request({
+    url: `/build-tasks/${taskId}`,
+    method: 'get'
+  }) as Promise<any>
+}
+

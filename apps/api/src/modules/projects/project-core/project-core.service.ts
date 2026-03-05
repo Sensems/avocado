@@ -88,10 +88,10 @@ export class ProjectCoreService {
       const [memberships, total] = await Promise.all([
         this.prisma.projectMember.findMany({
           where: { userId: user.id },
-          include: { 
+          include: {
             project: {
-              include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } }
-            } 
+              include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } },
+            },
           },
           orderBy: { project: { createdAt: 'desc' } },
           skip,
@@ -101,7 +101,11 @@ export class ProjectCoreService {
           where: { userId: user.id },
         }),
       ]);
-      const items = memberships.map((m) => ({ ...m.project, lastBuild: m.project.buildTasks[0] || null, myRole: m.role }));
+      const items = memberships.map((m) => ({
+        ...m.project,
+        lastBuild: m.project.buildTasks[0] || null,
+        myRole: m.role,
+      }));
       return { items, total };
     }
   }
@@ -160,6 +164,7 @@ export class ProjectCoreService {
         defaultBranch: updateDto.defaultBranch ?? null,
         retentionCount: updateDto.retentionCount,
         webhookSecret: updateDto.webhookSecret,
+        historyEnabled: updateDto.historyEnabled,
         privateKeyPath,
       } as any,
     });

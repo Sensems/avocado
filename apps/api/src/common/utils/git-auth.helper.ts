@@ -112,10 +112,10 @@ export async function listBranchesWithContext(
   repoUrl: string,
   ctx: GitAuthContext,
 ): Promise<string[]> {
-  const { stdout } = await execAsync(
-    `git ${ctx.extraArgs} ls-remote --heads "${repoUrl}"`,
-    { env: ctx.env, timeout: 30_000 },
-  );
+  const { stdout } = await execAsync(`git ${ctx.extraArgs} ls-remote --heads "${repoUrl}"`, {
+    env: ctx.env,
+    timeout: 30_000,
+  });
 
   return stdout
     .split('\n')

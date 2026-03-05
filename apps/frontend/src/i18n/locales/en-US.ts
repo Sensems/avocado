@@ -113,6 +113,9 @@ const enUS = {
       viewLogs: 'View Logs',
       download: 'Download',
       cancelBuild: 'Cancel',
+      deleteConfirmTitle: 'Confirm Deletion',
+      deleteConfirmContent: 'Are you sure you want to delete this record? Related logs and artifacts will be permanently discarded.',
+      deletedMsg: 'Record deleted successfully',
     },
 
     terminal: {
@@ -196,6 +199,23 @@ const enUS = {
       log: 'Build Log',
       downloadBtn: 'Download',
       noArtifacts: 'No downloadable artifacts available.',
+    },
+
+    artifacts: {
+      tabLabel: 'History Versions',
+      disabledTitle: 'History Versions Feature Disabled',
+      disabledHint: 'When enabled, artifacts from each successful build will be automatically saved for quick rollback and re-upload.\nPlease enable this feature in the "Settings" tab.',
+      colVersion: 'Version',
+      colBranch: 'Branch',
+      colDate: 'Build Date',
+      colActions: 'Actions',
+      reupload: 'Quick Upload',
+      reuploadConfirmTitle: 'Confirm Quick Upload',
+      reuploadConfirmContent: 'Are you sure you want to re-upload the artifact saved in this version to the WeChat Mini Program?',
+      reuploadSuccess: 'Upload task created, please check the logs',
+      logDrawerTitle: 'Upload Logs · {version}',
+      noArtifacts: 'No saved history artifacts available (automatically saved after a successful build)',
+      deleteConfirmContent: 'Are you sure you want to delete this historical version? Related logs and artifacts will be permanently discarded.',
     },
   },
 

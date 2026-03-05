@@ -99,7 +99,7 @@ export class UsersService implements OnModuleInit {
     }
 
     const data: any = { ...updateUserDto };
-    
+
     // 如果存在同名用户，需要避免冲突
     if (data.username && data.username !== user.username) {
       const existing = await this.prisma.user.findUnique({ where: { username: data.username } });
@@ -125,7 +125,7 @@ export class UsersService implements OnModuleInit {
     if (!user) {
       throw new NotFoundException('用户不存在');
     }
-    
+
     if (user.isSuperAdmin) {
       throw new ConflictException('无法删除超级管理员');
     }

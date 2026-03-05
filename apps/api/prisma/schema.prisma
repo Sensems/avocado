@@ -76,8 +76,9 @@ model Project {
   buildCommand   String?       @map("build_command") @db.VarChar(255)
   distPath       String?       @map("dist_path") @db.VarChar(255)
   privateKeyPath String?       @map("private_key_path") @db.VarChar(500)
-  retentionCount Int           @default(10) @map("retention_count")
-  defaultBranch  String?       @map("default_branch") @db.VarChar(100)
+  retentionCount  Int           @default(10) @map("retention_count")
+  historyEnabled  Boolean       @default(false) @map("history_enabled")
+  defaultBranch   String?       @map("default_branch") @db.VarChar(100)
   webhookSecret  String?       @map("webhook_secret") @db.VarChar(255)
   imRobotIds     Json?         @map("im_robot_ids") // Array of ImRobot IDs
   createdAt      DateTime      @default(now()) @map("created_at")

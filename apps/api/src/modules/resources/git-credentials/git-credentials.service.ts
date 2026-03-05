@@ -105,10 +105,10 @@ export class GitCredentialsService {
     );
 
     try {
-      const { stdout } = await execAsync(
-        `git ${ctx.extraArgs} ls-remote ${testUrl}`,
-        { env: ctx.env, timeout: 30_000 },
-      );
+      const { stdout } = await execAsync(`git ${ctx.extraArgs} ls-remote ${testUrl}`, {
+        env: ctx.env,
+        timeout: 30_000,
+      });
       return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
     } catch (error) {
       const msg = (error as Error).message ?? String(error);

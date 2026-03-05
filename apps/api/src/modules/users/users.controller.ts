@@ -59,10 +59,7 @@ export class UsersController {
   @Put(':id')
   @ApiOperation({ summary: '更新用户信息' })
   @ApiResultResponse(UserResponseDto)
-  update(
-    @Param('id') id: string,
-    @Body() updateUserDto: UpdateUserDto,
-  ): Promise<UserResponseDto> {
+  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
     return this.usersService.update(id, updateUserDto) as any;
   }
 

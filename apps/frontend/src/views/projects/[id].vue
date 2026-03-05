@@ -3,7 +3,7 @@ import { ref, onMounted, watch, h, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProjectDetail, updateProject } from '@/api/project'
 import type { ProjectDto } from '@/api/project'
-import { getBuildTasks, cancelTask, triggerBuild } from '@/api/build-task'
+import { getBuildTasks, cancelTask, triggerBuild, reuploadFromHistory, deleteTask } from '@/api/build-task'
 import type { BuildTaskDto } from '@/api/build-task'
 import { getCredentials, fetchRepoBranches } from '@/api/credential'
 import { getRobots } from '@/api/robot'
@@ -70,6 +70,43 @@ const logTaskStatus = ref('')
 // Download Drawer State
 const downloadDrawerOpen = ref(false)
 const downloadTask = ref<BuildTaskDto | null>(null)
+
+// 历史版本 Tab State
+const reuploadingId = ref('')
+const reuploadLogDrawerOpen = ref(false)
+const reuploadLogTaskId = ref('')
+const reuploadLogVersion = ref('')
+const reuploadLogStatus = ref('')
+const reuploadLogPath = ref('')
+
+/**
+ * 历史版本快速上传：确认 → 调用 API 创建 reupload 任务 → 打开 SSE 日志 Drawer
+ */
+const handleReupload = (row: BuildTaskDto) => {
+    dialog.warning({
+        title: t('projectDetail.artifacts.reuploadConfirmTitle'),
+        content: t('projectDetail.artifacts.reuploadConfirmContent'),
+        positiveText: t('projectDetail.artifacts.reupload'),
+        negativeText: t('common.cancel'),
+        onPositiveClick: async () => {
+            reuploadingId.value = row.id
+            try {
+                const res = await reuploadFromHistory(row.id)
+                const newTaskId = res.data?.id ?? ''
+                message.success(t('projectDetail.artifacts.reuploadSuccess'))
+                reuploadLogTaskId.value = newTaskId
+                reuploadLogVersion.value = row.version || row.id.substring(0, 8)
+                reuploadLogStatus.value = 'running'
+                reuploadLogPath.value = ''
+                reuploadLogDrawerOpen.value = true
+            } catch (e) {
+                console.error(e)
+            } finally {
+                reuploadingId.value = ''
+            }
+        }
+    })
+}
 
 // Members State
 const members = ref<any[]>([])
@@ -245,6 +282,24 @@ const handleCancelTask = async (taskId: string) => {
     })
 }
 
+const handleDeleteTask = async (taskId: string, isArtifact = false) => {
+    dialog.warning({
+        title: t('projectDetail.history.deleteConfirmTitle'),
+        content: isArtifact ? t('projectDetail.artifacts.deleteConfirmContent') : t('projectDetail.history.deleteConfirmContent'),
+        positiveText: t('common.delete'),
+        negativeText: t('common.cancel'),
+        onPositiveClick: async () => {
+            try {
+                await deleteTask(taskId)
+                message.success(t('projectDetail.history.deletedMsg'))
+                fetchBuilds()
+            } catch (e) {
+                console.error(e)
+            }
+        }
+    })
+}
+
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
     const d = new Date(dateStr)
@@ -268,9 +323,11 @@ const handleUpdateSettings = async () => {
             gitCredentialId: project.value.gitCredentialId,
             imRobotIds: project.value.imRobotIds,
             retentionCount: project.value.retentionCount,
+            historyEnabled: project.value.historyEnabled,
             defaultBranch: project.value.defaultBranch,
             webhookSecret: project.value.webhookSecret,
-            privateKeyFile: newPrivateKeyFile.value,
+            // 仅有新文件时才附加，避免发送 null 触发后端 DTO whitelist 校验报错
+            ...(newPrivateKeyFile.value ? { privateKeyFile: newPrivateKeyFile.value } : {}),
         }
         await updateProject(projectId, payload)
         message.success(t('projectDetail.settings.saveSuccess'))
@@ -340,6 +397,44 @@ onMounted(async () => {
     }
 })
 
+// 历史版本表格列
+const artifactsColumns = computed(() => [
+    {
+        title: t('projectDetail.artifacts.colVersion'), key: 'version', width: 130, render(row: BuildTaskDto) {
+            return h('span', { class: 'font-mono text-xs bg-zinc-800 px-2 py-1 rounded text-zinc-300' }, row.version || row.id.substring(0, 8))
+        }
+    },
+    {
+        title: t('projectDetail.artifacts.colBranch'), key: 'branch', width: 140, render(row: BuildTaskDto) {
+            return h('span', { class: 'text-sm text-zinc-300' }, (row as any).branch || '-')
+        }
+    },
+    {
+        title: t('projectDetail.artifacts.colDate'), key: 'createdAt', width: 160, render(row: BuildTaskDto) {
+            return h('span', { class: 'text-zinc-400 text-sm' }, formatDate(row.createdAt as string))
+        }
+    },
+    {
+        title: t('projectDetail.artifacts.colActions'), key: 'actions', width: 140, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
+            return h('div', { class: 'flex gap-2 justify-end' }, [
+                h(NButton, {
+                    text: true,
+                    type: 'warning',
+                    size: 'small',
+                    loading: reuploadingId.value === row.id,
+                    onClick: () => handleReupload(row)
+                }, { default: () => t('projectDetail.artifacts.reupload') }),
+                h(NButton, {
+                    text: true,
+                    type: 'error',
+                    size: 'small',
+                    onClick: () => handleDeleteTask(row.id as string, true)
+                }, { default: () => t('common.delete') })
+            ])
+        }
+    }
+])
+
 // 使用 computed 确保 t() 响应式
 const buildColumns = computed(() => [
     {
@@ -372,11 +467,12 @@ const buildColumns = computed(() => [
         }
     },
     {
-        title: t('projectDetail.history.colActions'), key: 'actions', width: 220, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colActions'), key: 'actions', width: 260, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
             return h('div', { class: 'flex gap-2 justify-end' }, [
                 h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewLog(row) }, { default: () => t('projectDetail.history.viewLogs') }),
                 h(NButton, { text: true, type: 'primary', size: 'small', disabled: !row.artifactPath && !row.qrcodePath, onClick: () => handleDownload(row) }, { default: () => t('projectDetail.history.download') }),
-                h(NButton, { text: true, type: 'warning', size: 'small', disabled: row.status === 'success' || row.status === 'failed' || row.status === 'canceled', onClick: () => handleCancelTask(row.id as string) }, { default: () => t('projectDetail.history.cancelBuild') })
+                h(NButton, { text: true, type: 'warning', size: 'small', disabled: row.status === 'success' || row.status === 'failed' || row.status === 'canceled', onClick: () => handleCancelTask(row.id as string) }, { default: () => t('projectDetail.history.cancelBuild') }),
+                h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDeleteTask(row.id as string) }, { default: () => t('common.delete') })
             ])
         }
     }
@@ -507,6 +603,39 @@ const memberColumns = computed(() => [
                     </div>
                 </n-tab-pane>
 
+                <n-tab-pane :label="t('projectDetail.artifacts.tabLabel')" name="artifacts">
+                    <div class="p-6">
+                        <!-- 功能未开启提示 -->
+                        <div v-if="!project?.historyEnabled"
+                            class="flex flex-col items-center justify-center py-16 gap-4 border border-dashed border-white/10 rounded-xl text-center">
+                            <svg class="w-12 h-12 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div>
+                                <p class="text-zinc-300 font-medium text-base">{{
+                                    t('projectDetail.artifacts.disabledTitle') }}</p>
+                                <p class="text-zinc-500 text-sm mt-1 whitespace-pre-line">{{
+                                    t('projectDetail.artifacts.disabledHint') }}</p>
+                            </div>
+                        </div>
+
+                        <!-- 历史版本产物列表 -->
+                        <template v-else>
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-xl font-semibold text-white">{{ t('projectDetail.artifacts.tabLabel') }}
+                                </h3>
+                                <n-button dashed size="small" @click="fetchBuilds" :loading="loadingBuilds">{{
+                                    t('common.refresh') }}</n-button>
+                            </div>
+                            <n-data-table :columns="artifactsColumns"
+                                :data="buildTasks.filter((t: any) => t.status === 'success' && t.artifactPath)"
+                                :loading="loadingBuilds" :bordered="false" class="dark-table"
+                                :empty-text="t('projectDetail.artifacts.noArtifacts')" />
+                        </template>
+                    </div>
+                </n-tab-pane>
+
                 <n-tab-pane :label="t('projectDetail.tabSettings')" name="settings">
                     <div class="p-6 max-w-2xl">
                         <h3 class="text-xl font-semibold mb-6 text-white">{{ t('projectDetail.settings.title') }}</h3>
@@ -544,8 +673,20 @@ const memberColumns = computed(() => [
                                 <n-input v-model:value="project.distPath" placeholder="e.g. dist/build/mp-weixin" />
                             </n-form-item>
                             <n-form-item :label="t('projectDetail.settings.retentionCount')">
-                                <n-input-number v-model:value="project.retentionCount" :min="1" :max="100"
+                                <n-input-number v-model:value="project.retentionCount" :min="1" :max="10"
                                     placeholder="10" class="w-full" />
+                                <template #feedback>
+                                    <span class="text-xs text-zinc-500">{{
+                                        t('projectDetail.settings.retentionCountHint') }}</span>
+                                </template>
+                            </n-form-item>
+
+                            <n-form-item :label="t('projectDetail.settings.historyEnabled')">
+                                <div class="flex flex-col gap-1">
+                                    <div><n-switch v-model:value="project.historyEnabled" /></div>
+                                    <p class="text-xs text-zinc-500">{{ t('projectDetail.settings.historyEnabledHint')
+                                    }}</p>
+                                </div>
                             </n-form-item>
 
                             <!-- 默认构建分支 -->
@@ -788,6 +929,16 @@ const memberColumns = computed(() => [
                         {{ t('projectDetail.download.noArtifacts') }}
                     </div>
                 </div>
+            </n-drawer-content>
+        </n-drawer>
+
+        <!-- Reupload Log Drawer (历史版本快速上传日志) -->
+        <n-drawer v-model:show="reuploadLogDrawerOpen" :width="860" placement="right"
+            @after-leave="reuploadLogTaskId = ''">
+            <n-drawer-content :title="t('projectDetail.artifacts.logDrawerTitle', { version: reuploadLogVersion })"
+                closable>
+                <WebSocketTerminal v-if="reuploadLogTaskId" :task-id="reuploadLogTaskId"
+                    :log-path="reuploadLogPath || undefined" :status="reuploadLogStatus" />
             </n-drawer-content>
         </n-drawer>
     </n-spin>

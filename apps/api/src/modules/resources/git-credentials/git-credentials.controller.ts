@@ -1,5 +1,16 @@
 import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
-import { Controller, Get, Post, Body, Param, Delete, Patch, Request, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Patch,
+  Request,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { GitCredentialsService } from './git-credentials.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
 import { UpdateGitCredentialDto } from './dto/update-git-credential.dto';
@@ -22,7 +33,6 @@ export class GitCredentialsController {
   @RequireSuperAdmin()
   @ApiOperation({ summary: '添加新的 Git 凭证（通过 AES 安全存储）' })
   @ApiResultResponse()
-
   create(@Body() createDto: CreateGitCredentialDto, @Request() req: ExpressRequest) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
@@ -34,11 +44,7 @@ export class GitCredentialsController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 15' })
   @ApiResultResponse()
-
-  findAll(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
     const pageNumber = page ? parseInt(page, 10) : 1;
     const limitNumber = limit ? parseInt(limit, 10) : 15;
     return this.gitCredentialsService.findAll(pageNumber, limitNumber);
@@ -58,7 +64,6 @@ export class GitCredentialsController {
   @RequireSuperAdmin()
   @ApiOperation({ summary: '删除 Git 凭证' })
   @ApiResultResponse()
-
   remove(@Param('id') id: string) {
     return this.gitCredentialsService.remove(id);
   }
@@ -76,17 +81,13 @@ export class GitCredentialsController {
       },
     },
   })
-  listBranches(
-    @Body('repoUrl') repoUrl: string,
-    @Body('credentialId') credentialId?: string,
-  ) {
+  listBranches(@Body('repoUrl') repoUrl: string, @Body('credentialId') credentialId?: string) {
     return this.gitCredentialsService.listRemoteBranches(repoUrl, credentialId);
   }
 
   @Post(':id/test')
   @ApiOperation({ summary: '通过 git ls-remote 测试凭证连通性' })
   @ApiResultResponse()
-
   @ApiBody({
     schema: {
       type: 'object',
