@@ -18,5 +18,4 @@ build/
 *.sw?
 
 # pnpm
-pnpm-lock.yaml
 pnpm-error.log
