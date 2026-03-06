@@ -76,9 +76,12 @@ const connectWebSocket = () => {
     qrcodeDataUrl.value = ''
 
     const token = localStorage.getItem('avocado-token')
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3000'
+    // Use relative path so socket.io connects to the current host
+    // which allows Nginx proxy to work seamlessly across different environments
+    const wsUrl = import.meta.env.VITE_WS_URL || ''
 
     socket = io(wsUrl, {
+        path: '/socket.io',
         query: { taskId: props.taskId },
         auth: { token }
     })

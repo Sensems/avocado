@@ -7,7 +7,6 @@ import { getCredentials, fetchRepoBranches } from '@/api/credential'
 import { getRobots } from '@/api/robot'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
-import type { UploadFileInfo } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
@@ -313,14 +312,13 @@ const handleTriggerBuild = async () => {
             <!-- Upload Key Field -->
             <div class="col-span-2">
               <label class="block text-xs text-zinc-400 mb-1">{{ t('projects.form.privateKeyFile') }}</label>
-              <n-upload accept=".key" :max="1" :show-file-list="true" :default-upload="false"
-                @change="(data: any) => { 
-                  if (data.fileList && data.fileList.length > 0) {
-                    projectForm.privateKeyFile = data.fileList[0].file;
-                  } else {
-                    projectForm.privateKeyFile = null;
-                  }
-                }">
+              <n-upload accept=".key" :max="1" :show-file-list="true" :default-upload="false" @change="(data: any) => {
+                if (data.fileList && data.fileList.length > 0) {
+                  projectForm.privateKeyFile = data.fileList[0].file;
+                } else {
+                  projectForm.privateKeyFile = null;
+                }
+              }">
                 <n-button dashed class="w-full justify-start text-zinc-400">
                   <template #icon>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

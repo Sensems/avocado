@@ -1,0 +1,14 @@
+node_modules
+apps/api/node_modules
+apps/frontend/node_modules
+dist
+apps/api/dist
+apps/frontend/dist
+.git
+.env
+.env.*
+!.env.example
+npm-debug.log
+yarn-error.log
+pnpm-debug.log*
+.DS_Store
