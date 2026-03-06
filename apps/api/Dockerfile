@@ -20,7 +20,7 @@ RUN pnpm run build
 
 # 利用 pnpm 隔离生产依赖
 WORKDIR /app
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @avocado/api --prod deploy /prod/api
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm --filter @avocado/api --prod deploy --legacy /prod/api
 
 # 确保 Prisma Client 被复制过来 (如果它生成在应用内的 node_modules)
 RUN cp -R /app/apps/api/node_modules/.prisma /prod/api/node_modules/ || true
