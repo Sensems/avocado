@@ -42,6 +42,9 @@ RUN chmod +x ./entrypoint.sh
 # 全局安装 prisma CLI (锁定与项目一致的 v6 版本，v7 有破坏性变更)
 RUN npm install -g prisma@6
 
+# 在 runner 阶段重新生成 Prisma Client，确保路径与 pnpm deploy 的 node_modules 结构匹配
+RUN prisma generate --schema=./prisma/schema.prisma
+
 ENV NODE_ENV=production
 EXPOSE 3000
 
