@@ -39,8 +39,8 @@ COPY apps/api/entrypoint.sh ./
 
 RUN chmod +x ./entrypoint.sh
 
-# 全局安装 prisma 以支持执行 migrate deploy 命令
-RUN npm install -g prisma
+# 全局安装 prisma CLI (锁定与项目一致的 v6 版本，v7 有破坏性变更)
+RUN npm install -g prisma@6
 
 ENV NODE_ENV=production
 EXPOSE 3000
