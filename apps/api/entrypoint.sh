@@ -12,4 +12,4 @@ npx prisma db seed
 
 # Start the application
 echo "Starting application..."
-exec node dist/main
+exec node dist/src/main

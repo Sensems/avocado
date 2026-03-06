@@ -22,7 +22,7 @@ RUN npx prisma generate
 RUN pnpm run build
 
 # 验证构建产物存在
-RUN test -f dist/main.js || (echo "ERROR: dist/main.js not found after build!" && exit 1)
+RUN test -f dist/src/main.js || (echo "ERROR: dist/src/main.js not found after build!" && exit 1)
 
 # 利用 pnpm 隔离生产依赖
 WORKDIR /app
