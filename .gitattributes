@@ -1,0 +1,4 @@
+# Ensure shell scripts always use LF line endings (prevents Docker build failures on Windows)
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+Dockerfile text eol=lf

@@ -10,9 +10,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # 镜像名称统一在此设置，可按需修改
-  API_IMAGE_NAME: ${{ github.repository }}-api
-  FRONTEND_IMAGE_NAME: ${{ github.repository }}-frontend
 
 jobs:
   build-and-push:
@@ -24,6 +21,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set image names to lowercase
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "API_IMAGE_NAME=${REPO_LOWER}-api" >> $GITHUB_ENV
+          echo "FRONTEND_IMAGE_NAME=${REPO_LOWER}-frontend" >> $GITHUB_ENV
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -46,7 +49,7 @@ jobs:
             type=semver,pattern={{version}}
 
       - name: Build and push API Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./apps/api/Dockerfile
@@ -67,7 +70,7 @@ jobs:
             type=semver,pattern={{version}}
 
       - name: Build and push Frontend Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./apps/frontend/Dockerfile
