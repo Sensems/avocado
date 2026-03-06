@@ -15,6 +15,11 @@ const dialogVisible = ref(false)
 const submitting = ref(false)
 /** 编辑时存储当前记录 id，null 表示新建模式 */
 const editingId = ref<string | null>(null)
+/** 测试凭证弹窗 */
+const testDialogVisible = ref(false)
+const testUrl = ref('')
+const testingCredentialId = ref<string | null>(null)
+const testing = ref(false)
 
 const emptyForm = (): CredentialDto => ({ name: '', type: 'ssh', username: '', secret: '' })
 
@@ -88,13 +93,29 @@ const handleDelete = async (id: string) => {
   })
 }
 
-const handleTest = async (id: string) => {
+const openTestDialog = (id: string) => {
+  testingCredentialId.value = id
+  testUrl.value = ''
+  testDialogVisible.value = true
+}
+
+const handleTestConfirm = async () => {
+  const id = testingCredentialId.value
+  const url = testUrl.value?.trim()
+  if (!id || !url) {
+    message.warning(t('admin.credentials.testUrlRequired'))
+    return
+  }
+  testing.value = true
   try {
-    await testCredential(id)
+    await testCredential(id, url)
     message.success(t('admin.credentials.testPassed'))
+    testDialogVisible.value = false
   } catch (e) {
     message.error(t('admin.credentials.testFailed'))
     console.error(e)
+  } finally {
+    testing.value = false
   }
 }
 
@@ -111,7 +132,7 @@ const columns = computed(() => [
   {
     title: t('admin.credentials.colActions'), key: 'actions', width: 200, fixed: 'right' as const, render(row: CredentialDto) {
       return h('div', { class: 'flex gap-2' }, [
-        h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => handleTest(row.id as string) }, { default: () => t('common.test') }),
+        h(NButton, { text: true, type: 'primary', size: 'small', onClick: () => openTestDialog(row.id as string) }, { default: () => t('common.test') }),
         h(NButton, { text: true, type: 'info', size: 'small', onClick: () => openEdit(row) }, { default: () => t('common.edit') }),
         h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDelete(row.id as string) }, { default: () => t('common.delete') })
       ])
@@ -176,6 +197,18 @@ onMounted(() => {
       <div class="flex justify-end gap-4 mt-6">
         <n-button @click="dialogVisible = false">{{ t('common.cancel') }}</n-button>
         <n-button type="primary" :loading="submitting" @click="handleSubmit">{{ t('common.save') }}</n-button>
+      </div>
+    </n-modal>
+
+    <n-modal v-model:show="testDialogVisible" preset="card" :title="t('admin.credentials.testDialogTitle')" class="max-w-[500px]" :bordered="false">
+      <n-form>
+        <n-form-item :label="t('admin.credentials.testUrlLabel')" required>
+          <n-input v-model:value="testUrl" type="text" :placeholder="t('admin.credentials.testUrlPlaceholder')" />
+        </n-form-item>
+      </n-form>
+      <div class="flex justify-end gap-4 mt-6">
+        <n-button @click="testDialogVisible = false">{{ t('common.cancel') }}</n-button>
+        <n-button type="primary" :loading="testing" @click="handleTestConfirm">{{ t('common.test') }}</n-button>
       </div>
     </n-modal>
   </div>

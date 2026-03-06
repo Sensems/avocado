@@ -39,11 +39,12 @@ export class AuditLogsService {
       }),
     ]);
 
-    // 格式化返回数据，兼容前端接口所需的 username 字段
+    // 格式化返回数据，兼容前端接口所需的 username、resource 字段
     const formattedItems = items.map((item) => ({
       ...item,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       username: (item as any).user?.username,
+      resource: item.targetId ?? null,
     }));
 
     return { items: formattedItems, total };

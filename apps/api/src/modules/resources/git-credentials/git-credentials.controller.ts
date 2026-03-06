@@ -10,6 +10,7 @@ import {
   Request,
   UseGuards,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { GitCredentialsService } from './git-credentials.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
@@ -95,6 +96,9 @@ export class GitCredentialsController {
     },
   })
   testConnection(@Param('id') id: string, @Body('url') url: string) {
-    return this.gitCredentialsService.testConnection(id, url);
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      throw new BadRequestException('请提供要测试的仓库地址 (url)');
+    }
+    return this.gitCredentialsService.testConnection(id, url.trim());
   }
 }

@@ -5,10 +5,13 @@ export interface AuditLogDto {
   userId: string
   username: string
   action: string
-  resource: string
+  resource?: string
+  targetId?: string
   ipAddress: string
   createdAt: string
   details?: string
+  /** Request body stored by audit interceptor (JSON string or object) */
+  changes?: unknown
 }
 
 export function getAuditLogs(params?: { 

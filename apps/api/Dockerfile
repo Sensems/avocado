@@ -47,6 +47,9 @@ COPY --from=builder /app/apps/api/prisma ./prisma
 COPY apps/api/entrypoint.sh ./
 RUN chmod +x ./entrypoint.sh
 
+# 安装 git（构建流程中需要 clone 代码仓库）
+RUN apk add --no-cache git
+
 # 全局安装 prisma CLI (锁定与项目一致的 v6 版本，v7 有破坏性变更)
 RUN npm install -g prisma@6
 

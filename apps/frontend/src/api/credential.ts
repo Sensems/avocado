@@ -38,10 +38,11 @@ export function deleteCredential(id: string) {
   }) as Promise<any>
 }
 
-export function testCredential(id: string) {
+export function testCredential(id: string, url: string) {
   return request({
     url: `/git-credentials/${id}/test`,
     method: 'post',
+    data: { url },
   }) as Promise<any>
 }
 
