@@ -24,7 +24,7 @@ services:
     restart: always
 
   api:
-    image: ghcr.io/<YOUR_GITHUB_USERNAME>/avocado-api:latest
+    image: ghcr.io/sensems/avocado-api:latest
     container_name: avocado_api
     depends_on:
       - postgres
@@ -41,7 +41,7 @@ services:
     restart: always
 
   frontend:
-    image: ghcr.io/<YOUR_GITHUB_USERNAME>/avocado-frontend:latest
+    image: ghcr.io/sensems/avocado-frontend:latest
     container_name: avocado_frontend
     depends_on:
       - api

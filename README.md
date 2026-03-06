@@ -213,7 +213,7 @@ avocado/
 
 ```bash
 # 1. 克隆项目
-git clone <your-repo-url> avocado && cd avocado
+git clone https://github.com/Sensems/avocado.git avocado && cd avocado
 
 # 2. 安装依赖
 pnpm install
@@ -242,8 +242,8 @@ pnpm --filter frontend run dev
 ```bash
 # 1. 新建目录并下载配置文件
 mkdir avocado && cd avocado
-wget https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/avocado/main/docker-compose.prod.yml -O docker-compose.yml
-wget https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/avocado/main/.env.example -O .env
+wget https://raw.githubusercontent.com/sensems/avocado/main/docker-compose.prod.yml -O docker-compose.yml
+wget https://raw.githubusercontent.com/sensems/avocado/main/.env.example -O .env
 
 # 2. (可选) 修改 .env 中的密码和端口配置
 
