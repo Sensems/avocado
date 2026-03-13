@@ -49,6 +49,7 @@ const handleSelect = (key: string) => {
         : 'border-gray-200 bg-white/80',
     ]">
       <div class="flex items-center gap-4">
+        <img src="/logo.png" alt="Logo" class="h-8 w-8" />
         <h1 class="text-xl font-semibold tracking-tight">Avocado CI/CD</h1>
         <nav class="hidden md:flex ml-8 space-x-4">
           <router-link to="/dashboard" :class="[

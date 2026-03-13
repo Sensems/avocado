@@ -23,6 +23,11 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true
         // 不需要 rewrite，后端静态资源路径就是 /storage
+      },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true
       }
     }
   }
