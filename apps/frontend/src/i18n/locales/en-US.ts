@@ -14,6 +14,9 @@ const enUS = {
     loading: 'Loading...',
     noData: 'No data',
     forbidden: 'You do not have permission to access this page',
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    serverError: 'Server error. Please try again later.',
+    networkError: 'Network error. Please check your connection.',
     backToHome: 'Back to home',
   },
 
@@ -33,6 +36,7 @@ const enUS = {
     signIn: 'Sign In to Workspace',
     footer: 'Strictly for authorized personnel.\nSecured by Avocado Auth.',
     validationError: 'Username and password are required.',
+    invalidCredentials: 'Incorrect username or password, or the account is disabled.',
   },
 
   dashboard: {
@@ -91,6 +95,9 @@ const enUS = {
       buildCommandHint: 'Leave blank to use default',
       distPath: 'Distribution Path',
       distPathHint: 'Leave blank to use default',
+      defaultBranch: 'Default Branch',
+      defaultBranchPlaceholder: 'master',
+      defaultBranchHint: 'Git webhooks only trigger builds for pushes to this branch. Leave empty to assume main.',
       imRobot: 'IM Robot',
       imRobotPlaceholder: 'Select notification robots (multi-select)',
       goToRobots: 'Manage robots',

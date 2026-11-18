@@ -14,6 +14,9 @@ const zhCN = {
     loading: '加载中...',
     noData: '暂无数据',
     forbidden: '您没有权限访问此页面',
+    sessionExpired: '登录已过期，请重新登录',
+    serverError: '服务器错误，请稍后重试',
+    networkError: '网络连接失败，请检查网络',
     backToHome: '返回首页',
   },
 
@@ -33,6 +36,7 @@ const zhCN = {
     signIn: '登录工作空间',
     footer: '仅限授权人员访问。\n由 Avocado Auth 保障安全。',
     validationError: '用户名和密码为必填项',
+    invalidCredentials: '用户名或密码错误，或账号已被禁用',
   },
 
   dashboard: {
@@ -93,6 +97,9 @@ const zhCN = {
       buildCommandHint: '留空使用默认值',
       distPath: '产物路径',
       distPathHint: '留空使用默认值',
+      defaultBranch: '默认构建分支',
+      defaultBranchPlaceholder: 'master',
+      defaultBranchHint: 'Git Webhook 仅对该分支的推送触发构建；留空则按 main 处理',
       imRobot: 'IM 机器人',
       imRobotPlaceholder: '选择通知机器人（可多选）',
       goToRobots: '前往机器人管理',

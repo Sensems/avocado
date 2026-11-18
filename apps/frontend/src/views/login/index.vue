@@ -40,7 +40,9 @@ const handleLogin = async () => {
       password: loginForm.value.password
     })
   } catch (error) {
-    // Error is handled in axios interceptor and pinia store
+    // 401 交给这里提示：全局拦截器已对登录请求静默，避免弹出「登录已过期」
+    const err = error as { response?: { status?: number; data?: { message?: string } } }
+    message.error(err?.response?.data?.message || t('login.invalidCredentials'))
   } finally {
     loading.value = false
   }
