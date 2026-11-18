@@ -192,10 +192,12 @@ export class BuildTasksService {
         where: { projectId },
       }),
     ]);
-    // 二维码静态路径必须带签名才能访问（任务 ID 自增，裸路径可被遍历）
+    // 二维码与产物都属于敏感静态资源（产物 ZIP 含完整源码），
+    // 任务 ID 自增可被遍历，必须带签名才能访问
     const signedItems = items.map((task) => ({
       ...task,
       qrcodePath: task.qrcodePath ? buildSignedPath(task.qrcodePath) : null,
+      artifactPath: task.artifactPath ? buildSignedPath(task.artifactPath) : null,
     }));
 
     return { items: signedItems, total };

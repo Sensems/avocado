@@ -20,18 +20,23 @@ import { verifySignedPath } from './common/utils/signed-url.helper';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // 二维码走签名 URL：IM 机器人需要免鉴权访问，但任务 ID 是自增的、可被遍历，
-  // 因此要求路径携带 HMAC 签名与过期时间（缺签名直接 403）。
+  // 二维码与构建产物走签名 URL：
+  // - 二维码需要 IM 机器人免鉴权拉取
+  // - 产物 ZIP 里是完整源码（含 node_modules），任务 ID 自增、可被遍历，绝不能裸奔
+  // 两者都要求路径携带 HMAC 签名与过期时间，缺签名直接 403。
   app.use('/storage', (req: Request, res: Response, next: NextFunction) => {
     const filename = basename(req.path);
-    if (!/^qrcode-\d+\.jpg$/.test(filename)) {
+    if (!/^qrcode-\d+\.jpg$/.test(filename) && !/^artifact-\d+\.zip$/.test(filename)) {
       next();
       return;
     }
 
+    // 校验必须用完整路径（含子目录），否则 /storage/artifacts/x.zip 会被算成
+    // /storage/x.zip，与 sign 时的路径不一致，合法链接也会 403
+    const fullPath = `/storage${req.path}`;
     const exp = Number(req.query.exp);
     const sig = String(req.query.sig ?? '');
-    if (!verifySignedPath(`/storage/${filename}`, exp, sig)) {
+    if (!verifySignedPath(fullPath, exp, sig)) {
       res.status(403).json({ code: 403, message: '链接已失效或签名无效', data: null });
       return;
     }
