@@ -7,6 +7,8 @@ import { getBuildTasks, cancelTask, triggerBuild, reuploadFromHistory, deleteTas
 import type { BuildTaskDto } from '@/api/build-task'
 import { getCredentials, fetchRepoBranches } from '@/api/credential'
 import { getRobots } from '@/api/robot'
+import QuickAddCredential from '@/components/QuickAddCredential.vue'
+import QuickAddRobot from '@/components/QuickAddRobot.vue'
 import { addProjectMember, updateProjectMemberRole, removeProjectMember } from '@/api/project-member'
 import type { ProjectMemberDto } from '@/api/project-member'
 import { getUsers } from '@/api/user'
@@ -196,6 +198,27 @@ const loadDependencies = async () => {
         sysUsers.value = userRes.data?.items || []
     } catch (e) {
         console.error(e)
+    }
+}
+
+// ---- 快速添加凭证 / 机器人（在设置页内弹框添加，不跳转页面）----
+const showQuickCredential = ref(false)
+const showQuickRobot = ref(false)
+
+const onCredentialCreated = (credential: { id: string; name: string }) => {
+    loadDependencies()
+    if (project.value) {
+        project.value.gitCredentialId = credential.id
+    }
+}
+
+const onRobotCreated = (robot: { id: string; name: string }) => {
+    loadDependencies()
+    if (project.value) {
+        const current = project.value.imRobotIds || []
+        if (!current.includes(robot.id)) {
+            project.value.imRobotIds = [...current, robot.id]
+        }
     }
 }
 
@@ -867,7 +890,7 @@ const memberColumns = computed(() => [
                                         :placeholder="t('projectDetail.settings.gitCredentialPlaceholder')" clearable
                                         class="flex-1"
                                         :options="credentials.map(c => ({ label: c.name, value: c.id }))" />
-                                    <n-button tag="a" href="/admin/credentials" target="_blank" :title="t('projectDetail.settings.goToCredentialsPage')">
+                                    <n-button :title="t('projects.form.addCredential')" @click="showQuickCredential = true">
                                         <template #icon>
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -882,7 +905,7 @@ const memberColumns = computed(() => [
                                     <n-select v-model:value="project.imRobotIds" multiple
                                         :placeholder="t('projectDetail.settings.imRobotsPlaceholder')" class="flex-1"
                                         :options="robots.map(r => ({ label: r.name, value: r.id }))" />
-                                    <n-button tag="a" href="/admin/robots" target="_blank" :title="t('projectDetail.settings.goToRobotsPage')">
+                                    <n-button :title="t('projects.form.addRobot')" @click="showQuickRobot = true">
                                         <template #icon>
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -1015,6 +1038,10 @@ const memberColumns = computed(() => [
                     :log-path="reuploadLogPath || undefined" :status="reuploadLogStatus" />
             </n-drawer-content>
         </n-drawer>
+
+        <!-- 快速添加凭证 / 机器人（在设置页内弹框添加，不跳转页面） -->
+        <QuickAddCredential v-model:show="showQuickCredential" @created="onCredentialCreated" />
+        <QuickAddRobot v-model:show="showQuickRobot" @created="onRobotCreated" />
     </n-spin>
 </template>
 

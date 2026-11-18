@@ -89,6 +89,7 @@ const zhCN = {
       privateKeyFilePlaceholder: '点击上传 .key 文件',
       gitCredential: 'Git 凭证',
       gitCredentialPlaceholder: '选择 Git 凭证',
+      addCredential: '快速添加凭证',
       goToCredentials: '前往凭证管理',
       repoUrl: '仓库地址',
       fetchBranches: '获取分支',
@@ -102,6 +103,7 @@ const zhCN = {
       defaultBranchHint: 'Git Webhook 仅对该分支的推送触发构建；留空则按 main 处理',
       imRobot: 'IM 机器人',
       imRobotPlaceholder: '选择通知机器人（可多选）',
+      addRobot: '快速添加机器人',
       goToRobots: '前往机器人管理',
     },
     message: {

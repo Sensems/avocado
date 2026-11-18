@@ -8,6 +8,8 @@ import { getRobots } from '@/api/robot'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import QuickAddCredential from '@/components/QuickAddCredential.vue'
+import QuickAddRobot from '@/components/QuickAddRobot.vue'
 
 const router = useRouter()
 const message = useMessage()
@@ -51,6 +53,25 @@ const loadRobots = async () => {
     robots.value = res.data?.items || []
   } catch (e) {
     console.error(e)
+  }
+}
+
+// ---- 快速添加凭证 / 机器人（在项目弹窗内弹框添加，不跳转页面）----
+const showQuickCredential = ref(false)
+const showQuickRobot = ref(false)
+
+const onCredentialCreated = (credential: { id: string; name: string }) => {
+  // 刷新选项并立刻选中新建的凭证
+  loadCredentials()
+  projectForm.value.gitCredentialId = credential.id
+}
+
+const onRobotCreated = (robot: { id: string; name: string }) => {
+  // 刷新选项并追加选中新建的机器人
+  loadRobots()
+  const current = projectForm.value.imRobotIds || []
+  if (!current.includes(robot.id)) {
+    projectForm.value.imRobotIds = [...current, robot.id]
   }
 }
 
@@ -358,7 +379,7 @@ const handleTriggerBuild = async () => {
                 <n-select v-model:value="projectForm.gitCredentialId"
                   :placeholder="t('projects.form.gitCredentialPlaceholder')"
                   :options="credentials.map(c => ({ label: c.name, value: c.id }))" clearable class="flex-1" />
-                <n-button tag="a" href="/admin/credentials" target="_blank" :title="t('projects.form.goToCredentials')">
+                <n-button :title="t('projects.form.addCredential')" @click="showQuickCredential = true">
                   <template #icon>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -431,7 +452,7 @@ const handleTriggerBuild = async () => {
               <n-select v-model:value="projectForm.imRobotIds" multiple
                 :placeholder="t('projects.form.imRobotPlaceholder')"
                 :options="robots.map(r => ({ label: r.name, value: r.id }))" clearable class="flex-1" />
-              <n-button tag="a" href="/admin/robots" target="_blank" :title="t('projects.form.goToRobots')">
+              <n-button :title="t('projects.form.addRobot')" @click="showQuickRobot = true">
                 <template #icon>
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -486,6 +507,10 @@ const handleTriggerBuild = async () => {
         }}</n-button>
       </div>
     </n-modal>
+
+    <!-- 快速添加凭证 / 机器人（弹框内添加，不跳转页面） -->
+    <QuickAddCredential v-model:show="showQuickCredential" @created="onCredentialCreated" />
+    <QuickAddRobot v-model:show="showQuickRobot" @created="onRobotCreated" />
   </div>
 </template>
 
