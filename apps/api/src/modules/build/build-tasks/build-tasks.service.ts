@@ -10,6 +10,7 @@ import {
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import { buildSignedPath } from '../../../common/utils/signed-url.helper';
+import { isSafeBranchName } from '../../../common/utils/branch.util';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TriggerBuildDto } from './dto/trigger-build.dto';
 import { User, TaskStatus } from '@prisma/client';
@@ -35,6 +36,12 @@ export class BuildTasksService {
   async triggerBuild(dto: TriggerBuildDto, user: User) {
     const project = await this.prisma.project.findUnique({ where: { id: dto.projectId } });
     if (!project) throw new NotFoundException('项目不存在');
+
+    // 分支名白名单前置校验：此前只在 worker 里校验，非法分支会建出一个
+    // 注定失败的任务，用户要等一次构建才知道参数错了，还白占一个 robot。
+    if (!isSafeBranchName(dto.branch)) {
+      throw new BadRequestException(`非法的分支名: ${dto.branch}`);
+    }
 
     // 如果未提供，则自动生成版本号（例如 YYYYMMDDHHmmss）
     const version = dto.version || this.generateAutoVersion();
@@ -265,7 +272,7 @@ export class BuildTasksService {
       data: {
         status: TaskStatus.canceled,
         // 仅作为「该任务存在日志」的标记，前端据此决定是否展示日志入口
-        logPath: `/storage/logs/build-${taskId}.log`,
+        logPath: `build-${taskId}.log`,
       },
     });
 
@@ -327,6 +334,14 @@ export class BuildTasksService {
 
     if (source.status === TaskStatus.running || source.status === TaskStatus.pending) {
       throw new BadRequestException('任务尚未结束，无需重试');
+    }
+
+    // 原任务的分支可能本身就不合法（历史遗留的注入尝试）。
+    // 直接复用只会得到一条同样注定失败的任务，这里提前拒绝并说明原因。
+    if (!isSafeBranchName(source.branch)) {
+      throw new BadRequestException(
+        `原任务的分支名非法（${source.branch}），无法按原参数重试，请重新触发构建`,
+      );
     }
 
     // 版本号留空由 triggerBuild 自动生成，避免与原版本号冲突

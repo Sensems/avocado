@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isSafeBranchName } from '../../../common/utils/branch.util';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { GitCredentialType } from '@prisma/client';
@@ -127,10 +128,11 @@ export class BuildRunner {
 
   /**
    * 校验分支名，防止通过分支参数注入命令。
-   * webhook 的 payload 来自外部，这里是最后一道防线。
+   * webhook 的 payload 来自外部，这里是最后一道防线
+   * （第一道在 triggerBuild / retryTask，用同一份规则）。
    */
   assertSafeBranch(branch: string): void {
-    if (!branch || !/^[A-Za-z0-9._/-]{1,200}$/.test(branch)) {
+    if (!isSafeBranchName(branch)) {
       throw new Error(`非法的分支名: ${branch}`);
     }
   }
