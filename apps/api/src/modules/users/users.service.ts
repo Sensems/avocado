@@ -130,6 +130,29 @@ export class UsersService implements OnModuleInit {
       throw new ConflictException('无法删除超级管理员');
     }
 
+    // 用户被 audit_logs / project_members / build_tasks / git_credentials /
+    // im_robots 等多处外键引用（RESTRICT），只要有历史痕迹就物理删不掉。
+    // 与其让数据库抛 P2003 变 500，不如查清关联、引导用户改用「禁用」。
+    const [
+      auditCount,
+      memberCount,
+      taskCount,
+      credentialCount,
+      robotCount,
+    ] = await Promise.all([
+      this.prisma.auditLog.count({ where: { userId: id } }),
+      this.prisma.projectMember.count({ where: { userId: id } }),
+      this.prisma.buildTask.count({ where: { triggerUserId: id } }),
+      this.prisma.gitCredential.count({ where: { createdById: id } }),
+      this.prisma.imRobot.count({ where: { createdById: id } }),
+    ]);
+
+    if (auditCount + memberCount + taskCount + credentialCount + robotCount > 0) {
+      throw new ConflictException(
+        `该用户存在 ${auditCount + memberCount + taskCount + credentialCount + robotCount} 条关联记录，无法删除；请改用「禁用」使其无法登录`,
+      );
+    }
+
     return await this.prisma.user.delete({
       where: { id },
     });

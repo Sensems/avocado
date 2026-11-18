@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
 import { UpdateGitCredentialDto } from './dto/update-git-credential.dto';
@@ -83,6 +83,17 @@ export class GitCredentialsService {
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
     if (!credential) throw new NotFoundException('凭证不存在');
 
+    // 外键 RESTRICT：被项目引用的凭证不能物理删除，否则项目会悬空。
+    // 与其让数据库抛 P2003 变成 500，不如先查清楚，给一个能指导用户行动的提示。
+    const refCount = await this.prisma.project.count({
+      where: { gitCredentialId: id, deletedAt: null },
+    });
+    if (refCount > 0) {
+      throw new ConflictException(
+        `该凭证正被 ${refCount} 个项目使用，请先解绑这些项目再删除`,
+      );
+    }
+
     await this.prisma.gitCredential.delete({ where: { id } });
     return { success: true };
   }
@@ -98,6 +109,26 @@ export class GitCredentialsService {
     const credential = await this.prisma.gitCredential.findUnique({ where: { id } });
     if (!credential) throw new NotFoundException('凭证不存在');
 
+    // 先试一次匿名访问。公开仓库不需要凭证，服务器也不会校验随请求发来的凭据，
+    // 直接返回「连接成功」会让用户以为填的 PAT 是对的——直到私有仓库上才炸。
+    const anonCtx = buildNoAuthContext();
+    try {
+      const { stdout } = await execFileAsync('git', ['ls-remote', testUrl], {
+        env: anonCtx.env,
+        timeout: 30_000,
+      });
+      return {
+        success: true,
+        message: '仓库可匿名访问，本次测试未验证凭证有效性',
+        details: String(stdout).split('\n')[0],
+        anonymous: true,
+      };
+    } catch {
+      // 匿名失败说明确实需要认证，继续用凭证试
+    } finally {
+      await anonCtx.cleanup();
+    }
+
     const plainSecret = decrypt(credential.secret);
     const ctx = await buildGitAuthContext(
       { type: credential.type, username: credential.username, plainSecret },
@@ -109,7 +140,12 @@ export class GitCredentialsService {
         env: ctx.env,
         timeout: 30_000,
       });
-      return { success: true, message: '连接成功', details: String(stdout).split('\n')[0] };
+      return {
+        success: true,
+        message: '凭证有效，连接成功',
+        details: String(stdout).split('\n')[0],
+        anonymous: false,
+      };
     } catch (error) {
       const msg = (error as Error).message ?? String(error);
       const sanitized = msg.replace(/https?:\/\/[^@\s]+@/g, 'https://***@');
