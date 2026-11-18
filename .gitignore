@@ -19,3 +19,15 @@ dist/
 
 # pnpm
 pnpm-error.log
+
+# 运行时产物（构建日志、缓存等，不属于源码）
+apps/api/var/
+apps/api/.cache/
+
+# 本机启动脚本（内含绝对路径，换机器即失效）
+start-dev.cmd
+
+# 凭证与密钥，绝不入库
+*.key
+*.pem
+private-keys/
