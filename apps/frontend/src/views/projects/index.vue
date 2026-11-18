@@ -70,6 +70,7 @@ const projectForm = ref<ProjectDto & { gitCredentialId?: string }>({
   framework: 'native',
   distPath: '',
   buildCommand: '',
+  defaultBranch: '',
   gitCredentialId: undefined,
   imRobotIds: [],
   privateKeyFile: null as null | File,
@@ -111,10 +112,18 @@ const handleCreateProject = async () => {
 
   submitting.value = true
   try {
+    // 默认构建命令/产物路径只适用于 UniApp。原生小程序没有构建步骤，
+    // 源码目录也不在 dist 下，套用默认值会让构建指向一个不存在的目录
+    // （表现为上传一个空包，但状态仍是 success）。
+    const isUniApp = projectForm.value.framework === 'uniapp'
     await createProject({
       ...projectForm.value,
-      buildCommand: projectForm.value.buildCommand || DEFAULT_BUILD_COMMAND,
-      distPath: projectForm.value.distPath || DEFAULT_DIST_PATH,
+      buildCommand: isUniApp
+        ? projectForm.value.buildCommand || DEFAULT_BUILD_COMMAND
+        : projectForm.value.buildCommand,
+      distPath: isUniApp
+        ? projectForm.value.distPath || DEFAULT_DIST_PATH
+        : projectForm.value.distPath,
       privateKeyFile: projectForm.value.privateKeyFile,
     })
     dialogVisible.value = false
@@ -125,6 +134,7 @@ const handleCreateProject = async () => {
       framework: 'native',
       distPath: '',
       buildCommand: '',
+      defaultBranch: '',
       gitCredentialId: undefined,
       imRobotIds: [],
       privateKeyFile: null,
@@ -400,6 +410,11 @@ const handleTriggerBuild = async () => {
               <label class="block text-xs text-zinc-400 mb-1">{{ t('projects.form.distPath') }}</label>
               <n-input v-model:value="projectForm.distPath" :placeholder="DEFAULT_DIST_PATH" />
               <p class="text-[11px] text-zinc-600 mt-1">{{ t('projects.form.distPathHint') }}</p>
+            </div>
+            <div class="col-span-2">
+              <label class="block text-xs text-zinc-400 mb-1">{{ t('projects.form.defaultBranch') }}</label>
+              <n-input v-model:value="projectForm.defaultBranch" :placeholder="t('projects.form.defaultBranchPlaceholder')" />
+              <p class="text-[11px] text-zinc-600 mt-1">{{ t('projects.form.defaultBranchHint') }}</p>
             </div>
           </div>
         </div>
