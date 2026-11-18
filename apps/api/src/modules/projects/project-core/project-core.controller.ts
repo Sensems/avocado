@@ -29,9 +29,14 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { ProjectGuard } from '../../../common/guards/project.guard';
+import { ProjectGuard, RequireProjectRoles } from '../../../common/guards/project.guard';
 import { User, ProjectRole } from '@prisma/client';
 import type { Request as ExpressRequest } from 'express';
+
+/** 可读：项目所有成员 */
+const READ_ROLES = [ProjectRole.maintainer, ProjectRole.developer, ProjectRole.guest] as const;
+/** 可管理配置与成员：仅维护者 */
+const ADMIN_ROLES = [ProjectRole.maintainer] as const;
 
 @ApiTags('Projects Core')
 @ApiBearerAuth()
@@ -104,6 +109,8 @@ export class ProjectCoreController {
   }
 
   @Get(':id')
+  @UseGuards(ProjectGuard)
+  @RequireProjectRoles(...READ_ROLES)
   @ApiOperation({ summary: '获取项目详情（包含成员和设置）' })
   @ApiResultResponse()
   findOne(@Param('id') id: string) {
@@ -112,6 +119,7 @@ export class ProjectCoreController {
 
   @Put(':id')
   @UseGuards(ProjectGuard)
+  @RequireProjectRoles(...ADMIN_ROLES)
   @ApiOperation({ summary: '更新项目设置（需要维护者）' })
   @ApiConsumes('multipart/form-data', 'application/json')
   @UseInterceptors(FileInterceptor('privateKeyFile'))
@@ -132,6 +140,7 @@ export class ProjectCoreController {
 
   @Delete(':id')
   @UseGuards(ProjectGuard) // Re-uses our dynamic ProjectGuard mechanism
+  @RequireProjectRoles(...ADMIN_ROLES)
   @ApiOperation({ summary: '删除项目（需要维护者角色）' })
   @ApiResultResponse()
   remove(@Param('id') id: string) {
@@ -142,6 +151,7 @@ export class ProjectCoreController {
 
   @Post(':id/members')
   @UseGuards(ProjectGuard)
+  @RequireProjectRoles(...ADMIN_ROLES)
   @ApiOperation({ summary: '将用户添加到项目并指定角色（需要维护者）' })
   @ApiResultResponse()
   addMember(@Param('id') id: string, @Body() dto: AddProjectMemberDto) {
@@ -150,6 +160,7 @@ export class ProjectCoreController {
 
   @Put(':id/members/:userId')
   @UseGuards(ProjectGuard)
+  @RequireProjectRoles(...ADMIN_ROLES)
   @ApiOperation({ summary: '修改项目成员角色（需要维护者）' })
   @ApiResultResponse()
   updateMemberRole(
@@ -162,6 +173,7 @@ export class ProjectCoreController {
 
   @Delete(':id/members/:userId')
   @UseGuards(ProjectGuard)
+  @RequireProjectRoles(...ADMIN_ROLES)
   @ApiOperation({ summary: '移除项目成员（需要维护者）' })
   @ApiResultResponse()
   removeMember(@Param('id') id: string, @Param('userId') userId: string) {

@@ -11,14 +11,19 @@ import {
   Delete,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiHeader, ApiTags } from '@nestjs/swagger';
-import { User } from '@prisma/client';
+import { User, ProjectRole } from '@prisma/client';
 import type { Request as ExpressRequest } from 'express';
 
 import { BuildTasksService } from './build-tasks.service';
 import { TriggerBuildDto } from './dto/trigger-build.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { ProjectGuard } from '../../../common/guards/project.guard';
+import { ProjectGuard, RequireProjectRoles } from '../../../common/guards/project.guard';
 import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
+
+/** 可读：项目所有成员 */
+const READ_ROLES = [ProjectRole.maintainer, ProjectRole.developer, ProjectRole.guest] as const;
+/** 可操作构建：维护者与开发者 */
+const BUILD_ROLES = [ProjectRole.maintainer, ProjectRole.developer] as const;
 
 @ApiTags('Build Tasks')
 @Controller('build-tasks')
@@ -31,7 +36,8 @@ export class BuildTasksController {
 
   @Post('trigger')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard) // Requires login
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...BUILD_ROLES)
   @ApiOperation({ summary: '从前端面板手动触发构建' })
   @ApiResultResponse()
   triggerBuild(@Body() dto: TriggerBuildDto, @Request() req: ExpressRequest) {
@@ -42,7 +48,8 @@ export class BuildTasksController {
 
   @Get('project/:projectId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, ProjectGuard) // Standard RBAC checking
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...READ_ROLES)
   @ApiOperation({ summary: '获取项目的构建历史记录（分页）' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: '页码，默认 1' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: '每页数量，默认 20' })
@@ -59,7 +66,8 @@ export class BuildTasksController {
 
   @Get(':taskId/log')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...READ_ROLES)
   @ApiOperation({ summary: '读取构建日志全文（需项目成员权限）' })
   @ApiResultResponse()
   readLog(@Param('taskId') taskId: string, @Request() req: ExpressRequest) {
@@ -70,7 +78,8 @@ export class BuildTasksController {
 
   @Post(':taskId/cancel')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...BUILD_ROLES)
   @ApiOperation({ summary: '取消等待中或正在运行的构建任务' })
   @ApiResultResponse()
   cancelTask(@Param('taskId') taskId: string) {
@@ -79,7 +88,8 @@ export class BuildTasksController {
 
   @Delete(':taskId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...BUILD_ROLES)
   @ApiOperation({ summary: '删除构建记录' })
   @ApiResultResponse()
   deleteTask(@Param('taskId') taskId: string) {
@@ -88,7 +98,8 @@ export class BuildTasksController {
 
   @Post(':taskId/retry')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...BUILD_ROLES)
   @ApiOperation({ summary: '按原参数重新构建（失败重试）' })
   @ApiResultResponse()
   retryTask(@Param('taskId') taskId: string, @Request() req: ExpressRequest) {
@@ -99,7 +110,8 @@ export class BuildTasksController {
 
   @Post(':taskId/reupload')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProjectGuard)
+  @RequireProjectRoles(...BUILD_ROLES)
   @ApiOperation({ summary: '从历史版本产物快速重新上传到微信小程序' })
   @ApiResultResponse()
   reuploadFromHistory(@Param('taskId') taskId: string, @Request() req: ExpressRequest) {

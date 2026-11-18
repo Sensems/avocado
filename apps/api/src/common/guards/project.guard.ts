@@ -30,17 +30,29 @@ export class ProjectGuard implements CanActivate {
 
     const user: User = (request as any).user;
 
-    const projectId =
-      (request.params as any)?.projectId ||
-      request.body?.projectId ||
-      (request.query as any)?.projectId;
-
     if (!user) {
       throw new ForbiddenException('需要用户认证');
     }
 
     if (user.isSuperAdmin) {
       return true; // 超级管理员跳过项目角色检查
+    }
+
+    let projectId: string | undefined =
+      (request.params as any)?.projectId ||
+      // project-core 的路由参数名是 :id（如 GET /projects/:id），同样是项目 ID
+      (request.params as any)?.id ||
+      request.body?.projectId ||
+      (request.query as any)?.projectId;
+
+    // 任务级路由（/build-tasks/:taskId/*）只有 taskId，需要反查所属项目
+    const taskId = (request.params as any)?.taskId;
+    if (!projectId && taskId && /^\d+$/.test(String(taskId))) {
+      const task = await this.prisma.buildTask.findUnique({
+        where: { id: BigInt(String(taskId)) },
+        select: { projectId: true },
+      });
+      projectId = task?.projectId;
     }
 
     if (!projectId) {
