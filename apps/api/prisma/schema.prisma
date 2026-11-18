@@ -85,8 +85,8 @@ model Project {
   /// 软删除时间。删项目会级联删掉全部构建历史，因此只标记不物理删除
   deletedAt      DateTime?     @map("deleted_at")
 
-  gitCredentialId String        @map("git_credential_id") @db.Uuid
-  gitCredential   GitCredential @relation(fields: [gitCredentialId], references: [id])
+  gitCredentialId String?       @map("git_credential_id") @db.Uuid
+  gitCredential   GitCredential? @relation(fields: [gitCredentialId], references: [id])
 
   imRobots   ProjectImRobot[]
   members    ProjectMember[]

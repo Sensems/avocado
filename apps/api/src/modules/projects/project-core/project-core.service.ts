@@ -37,7 +37,7 @@ export class ProjectCoreService {
             name: createDto.name,
             appId: createDto.appId ?? null,
             repoUrl: createDto.repositoryUrl,
-            gitCredentialId: createDto.gitCredentialId as string,
+            gitCredentialId: createDto.gitCredentialId ?? null,
             framework: createDto.framework ?? FrameworkType.native,
             webhookSecret: generatedWebhookSecret,
             // 以下两项此前被遗漏：前端表单能填、DTO 能收，但创建时被静默丢弃，
@@ -187,7 +187,6 @@ export class ProjectCoreService {
     const data: Record<string, unknown> = {
       name: updateDto.name,
       repoUrl: updateDto.repositoryUrl,
-      gitCredentialId: updateDto.gitCredentialId as string,
       framework: updateDto.framework as FrameworkType,
       distPath: updateDto.distPath,
       buildCommand: updateDto.buildCommand,
@@ -197,14 +196,18 @@ export class ProjectCoreService {
       privateKeyPath,
     };
 
-    // appId / defaultBranch 不能用 `?? null` 直接写：
-    // 前端只改「构建命令」时不会带这两个字段，undefined 被转成 null 就会把已有配置清空。
-    // 只有显式传了值（哪怕是空串）才更新，未传则保持原值。
+    // appId / defaultBranch / gitCredentialId 都不能用 `?? null` 直接写：
+    // 前端只改「构建命令」时不会带这些字段，undefined 被转成 null 就会把已有配置清空。
+    // 只有显式传了值才更新，未传则保持原值。
     if (updateDto.appId !== undefined) {
       data.appId = updateDto.appId || null;
     }
     if (updateDto.defaultBranch !== undefined) {
       data.defaultBranch = updateDto.defaultBranch || null;
+    }
+    if (updateDto.gitCredentialId !== undefined) {
+      // 允许显式传 null 来「解绑凭证」（公开仓库场景）
+      data.gitCredentialId = updateDto.gitCredentialId || null;
     }
 
     const updated = await this.prisma.project.update({
@@ -239,13 +242,15 @@ export class ProjectCoreService {
     const project = await this.findOne(id); // 检查是否存在（已排除软删除的）
 
     // 软删除：物理删除会级联清空全部构建历史与审计链路。
-    // 同时改写 name 释放唯一约束，否则同名项目永远无法重建。
+    // 同时改写 name 释放唯一约束，否则同名项目永远无法重建；
+    // 并断开凭证关联，否则该凭证被一个「看不见」的软删除项目占用，
+    // 永远无法删除（外键 RESTRICT）。
     const suffix = `__deleted_${Date.now()}`;
     const freedName = project.name.slice(0, Math.max(1, 100 - suffix.length)) + suffix;
 
     await this.prisma.project.update({
       where: { id },
-      data: { deletedAt: new Date(), name: freedName },
+      data: { deletedAt: new Date(), name: freedName, gitCredentialId: null },
     });
 
     return { success: true };
