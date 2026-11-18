@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Logger,
   UnauthorizedException,
@@ -37,6 +38,18 @@ export class BuildTasksService {
     // 如果未提供，则自动生成版本号（例如 YYYYMMDDHHmmss）
     const version = dto.version || this.generateAutoVersion();
 
+    // 版本号唯一性：同一项目内已用过的版本号不再允许重复上传，
+    // 微信侧也会拒绝，但等它报错时构建已经跑完一轮了
+    if (dto.version) {
+      const duplicated = await this.prisma.buildTask.findFirst({
+        where: { projectId: dto.projectId, version: dto.version, status: TaskStatus.success },
+        select: { id: true },
+      });
+      if (duplicated) {
+        throw new ConflictException(`版本号 ${dto.version} 已存在成功的构建记录，请更换版本号`);
+      }
+    }
+
     const task = await this.prisma.buildTask.create({
       data: {
         projectId: dto.projectId,
@@ -64,8 +77,6 @@ export class BuildTasksService {
 
     await this.buildQueue.add('execute-build', jobData, {
       jobId: `build-${task.id.toString()}`,
-      removeOnComplete: true, // 保持 redis 清洁，我们依赖 Postgres 来记录历史
-      removeOnFail: false,
     });
 
     return task;
@@ -158,8 +169,6 @@ export class BuildTasksService {
 
     await this.buildQueue.add('execute-build', jobData, {
       jobId: `build-webhook-${task.id.toString()}`,
-      removeOnComplete: true,
-      removeOnFail: false,
     });
 
     return { success: true, taskId: task.id.toString(), message: '已接受 Webhook 构建' };
@@ -295,6 +304,34 @@ export class BuildTasksService {
   }
 
   /**
+   * 按原参数重新构建（失败重试）。
+   * 新建一条任务记录而不是复用原记录，保证构建历史完整可追溯。
+   */
+  async retryTask(taskId: string, user: User) {
+    if (!/^\d+$/.test(taskId)) throw new BadRequestException('非法的任务 ID');
+
+    const source = await this.prisma.buildTask.findUnique({
+      where: { id: BigInt(taskId) },
+      select: { projectId: true, branch: true, status: true },
+    });
+    if (!source) throw new NotFoundException('任务不存在');
+
+    if (source.status === TaskStatus.running || source.status === TaskStatus.pending) {
+      throw new BadRequestException('任务尚未结束，无需重试');
+    }
+
+    // 版本号留空由 triggerBuild 自动生成，避免与原版本号冲突
+    return this.triggerBuild(
+      {
+        projectId: source.projectId,
+        branch: source.branch,
+        buildDesc: `重试自 #${taskId}`,
+      },
+      user,
+    );
+  }
+
+  /**
    * 从历史版本产物快速重新上传到微信小程序
    */
   async reuploadFromHistory(sourceTaskId: string, user: User) {
@@ -339,8 +376,6 @@ export class BuildTasksService {
 
     await this.buildQueue.add('execute-build', jobData, {
       jobId: `reupload-${newTask.id.toString()}`,
-      removeOnComplete: true,
-      removeOnFail: false,
     });
 
     this.logger.log(`为历史版本 ${sourceTaskId} 创建了重新上传任务 ${newTask.id}`);

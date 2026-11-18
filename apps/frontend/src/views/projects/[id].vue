@@ -3,7 +3,7 @@ import { ref, onMounted, watch, h, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProjectDetail, updateProject } from '@/api/project'
 import type { ProjectDto } from '@/api/project'
-import { getBuildTasks, cancelTask, triggerBuild, reuploadFromHistory, deleteTask } from '@/api/build-task'
+import { getBuildTasks, cancelTask, triggerBuild, reuploadFromHistory, deleteTask, retryBuild } from '@/api/build-task'
 import type { BuildTaskDto } from '@/api/build-task'
 import { getCredentials, fetchRepoBranches } from '@/api/credential'
 import { getRobots } from '@/api/robot'
@@ -312,6 +312,24 @@ const handleCancelTask = async (taskId: string) => {
     })
 }
 
+const handleRetryTask = async (taskId: string) => {
+    try {
+        await retryBuild(taskId)
+        message.success(t('projectDetail.history.retrySuccess'))
+        fetchBuilds()
+    } catch (e) {
+        console.error(e)
+    }
+}
+
+/** 字节数转可读体积 */
+const formatSize = (bytes?: number | null) => {
+    if (!bytes) return '-'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
 const handleDeleteTask = async (taskId: string, isArtifact = false) => {
     dialog.warning({
         title: t('projectDetail.history.deleteConfirmTitle'),
@@ -492,15 +510,21 @@ const buildColumns = computed(() => [
         }
     },
     {
+        title: t('projectDetail.history.colSize'), key: 'packageSize', width: 110, render(row: BuildTaskDto) {
+            return h('span', { class: 'text-sm text-zinc-400 font-mono' }, formatSize(row.packageSize))
+        }
+    },
+    {
         title: t('projectDetail.history.colDate'), key: 'createdAt', width: 160, render(row: BuildTaskDto) {
             return h('span', { class: 'text-zinc-400 text-sm' }, formatDate(row.createdAt as string))
         }
     },
     {
-        title: t('projectDetail.history.colActions'), key: 'actions', width: 260, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
+        title: t('projectDetail.history.colActions'), key: 'actions', width: 320, fixed: 'right' as const, align: 'right' as const, render(row: BuildTaskDto) {
             return h('div', { class: 'flex gap-2 justify-end' }, [
                 h(NButton, { text: true, type: 'info', size: 'small', onClick: () => handleViewLog(row) }, { default: () => t('projectDetail.history.viewLogs') }),
                 h(NButton, { text: true, type: 'primary', size: 'small', disabled: !row.artifactPath && !row.qrcodePath, onClick: () => handleDownload(row) }, { default: () => t('projectDetail.history.download') }),
+                h(NButton, { text: true, type: 'success', size: 'small', disabled: row.status === 'running' || row.status === 'pending', onClick: () => handleRetryTask(row.id as string) }, { default: () => t('projectDetail.history.retry') }),
                 h(NButton, { text: true, type: 'warning', size: 'small', disabled: row.status === 'success' || row.status === 'failed' || row.status === 'canceled', onClick: () => handleCancelTask(row.id as string) }, { default: () => t('projectDetail.history.cancelBuild') }),
                 h(NButton, { text: true, type: 'error', size: 'small', onClick: () => handleDeleteTask(row.id as string) }, { default: () => t('common.delete') })
             ])

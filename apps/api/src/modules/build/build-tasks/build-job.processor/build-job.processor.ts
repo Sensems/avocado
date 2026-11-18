@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
+import { Job, DelayedError } from 'bullmq';
+import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { BUILD_QUEUE_NAME, BuildJobData } from '../interfaces/build-job.interface';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { RobotPoolService } from '../../robot-pool/robot-pool.service';
@@ -9,7 +9,9 @@ import { ImRobotsService } from '../../../resources/im-robots/im-robots.service'
 import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { TaskStatus } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { spawn } from 'child_process';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { spawn, execFile } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
@@ -26,6 +28,8 @@ import AdmZip from 'adm-zip';
 // @ts-ignore
 import * as ci from 'miniprogram-ci';
 
+const execFileAsync = promisify(execFile);
+
 /** 用户取消任务时抛出的内部信号：跳过后续步骤，且不算构建失败 */
 class TaskCanceledError extends Error {
   constructor() {
@@ -34,8 +38,8 @@ class TaskCanceledError extends Error {
   }
 }
 
-@Processor(BUILD_QUEUE_NAME)
-export class BuildJobProcessor extends WorkerHost {
+@Processor(BUILD_QUEUE_NAME, { concurrency: 3 })
+export class BuildJobProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(BuildJobProcessor.name);
 
   /**
@@ -44,6 +48,9 @@ export class BuildJobProcessor extends WorkerHost {
    * 直接静态暴露时可被按自增 taskId 遍历，必须通过鉴权接口读取。
    */
   private readonly logDir = path.join(process.cwd(), 'var', 'logs');
+
+  /** 上次检查依赖缓存体积的时间戳，避免每次构建都递归统计 */
+  private lastCachePruneAt = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -102,11 +109,11 @@ export class BuildJobProcessor extends WorkerHost {
         where: { id: BigInt(taskId) },
         data: { logPath: '正在等待可用的机器人 ID...' },
       });
-      // 将此作业移回延迟状态，10 秒后重试
+      // 移回延迟队列，10 秒后重新调度。
+      // 必须抛 DelayedError，BullMQ 才会把它当作「延迟」而不是「失败」，
+      // 否则会消耗 attempts 并计入失败统计。
       await job.moveToDelayed(Date.now() + 10000, job.token);
-      // 抛出错误也有助于 bullmq 知道它还没有 "完成"，但抛出可能会触发失败计数。
-      // 最直接的实现无失败重试的原生方式是延迟 + 抛出特殊的错误，或者如果配置了重试则抛出正常的错误。
-      throw new Error('没有可用的机器人，排队等待重试');
+      throw new DelayedError();
     }
 
     this.logger.log(`[Job ${job.id ?? 'unknown'}] 为任务 ${taskId} 获取了机器人 ID: ${robotId}`);
@@ -193,6 +200,16 @@ export class BuildJobProcessor extends WorkerHost {
             gitAuth.env,
           );
           this.emitLog(taskId, `克隆成功。`);
+
+          // 记录本次构建对应的 commit，否则构建记录无法追溯到具体代码
+          const commitHash = await this.resolveCommitHash(workspaceDir, gitAuth.env);
+          if (commitHash) {
+            await this.prisma.buildTask.update({
+              where: { id: BigInt(taskId) },
+              data: { commitHash },
+            });
+            this.emitLog(taskId, `当前提交: ${commitHash.slice(0, 8)}`);
+          }
         } finally {
           // 必须在克隆完成后清理临时凭证文件
           await gitAuth.cleanup();
@@ -344,6 +361,10 @@ export class BuildJobProcessor extends WorkerHost {
           }
         }
 
+        // 记录包体积（必须在清理工作区之前统计）
+        const packageSize = await this.dirSize(projectPath);
+        this.emitLog(taskId, `[INFO] 产物大小: ${(packageSize / 1024).toFixed(1)} KB`);
+
         // 清理工作区
         await fs.remove(workspaceDir);
 
@@ -357,6 +378,7 @@ export class BuildJobProcessor extends WorkerHost {
             status: TaskStatus.success,
             qrcodePath: `/storage/${qrcodeFileName}`,
             logPath: `/storage/logs/build-${taskId}.log`,
+            packageSize,
             ...(savedArtifactPath ? { artifactPath: savedArtifactPath } : {}),
           } as any,
         });
@@ -448,7 +470,7 @@ export class BuildJobProcessor extends WorkerHost {
     const robotId = await this.robotPoolService.acquireRobotId();
     if (robotId === null) {
       await job.moveToDelayed(Date.now() + 10000, job.token);
-      throw new Error('没有可用的机器人，排队等待重试');
+      throw new DelayedError();
     }
 
     await fs.ensureDir(this.logDir);
@@ -619,6 +641,81 @@ export class BuildJobProcessor extends WorkerHost {
     });
   }
 
+  async onApplicationBootstrap() {
+    await this.pruneOrphanWorkspaces();
+  }
+
+  /**
+   * 清理进程崩溃后残留在系统临时目录里的构建工作区（保留 24 小时内）
+   */
+  private async pruneOrphanWorkspaces(): Promise<void> {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const dirs = [
+      path.join(os.tmpdir(), 'avocado-builds'),
+      path.join(os.tmpdir(), 'avocado-reupload'),
+    ];
+
+    for (const dir of dirs) {
+      try {
+        if (!(await fs.pathExists(dir))) continue;
+        const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+        let removed = 0;
+        for (const entry of entries) {
+          const full = path.join(dir, entry.name);
+          const stat = await fs.stat(full).catch(() => null);
+          if (stat && stat.mtimeMs < cutoff) {
+            await fs.remove(full).catch(() => {});
+            removed += 1;
+          }
+        }
+        if (removed > 0) {
+          this.logger.log(`清理残留构建工作区 ${removed} 个: ${dir}`);
+        }
+      } catch {
+        // 清理失败不应阻塞启动
+      }
+    }
+  }
+
+  /**
+   * 每天清理过期日志与二维码，避免磁盘占用随构建次数线性增长。
+   * 产物 ZIP 由 artifacts.enforceRetention 按项目 retentionCount 控制。
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async cleanupOldArtifacts(): Promise<void> {
+    const LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+    const QRCODE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let logCount = 0;
+    let qrCount = 0;
+
+    const logFiles = await fs.readdir(this.logDir).catch(() => [] as string[]);
+    for (const name of logFiles) {
+      const full = path.join(this.logDir, name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (stat && now - stat.mtimeMs > LOG_RETENTION_MS) {
+        await fs.remove(full).catch(() => {});
+        logCount += 1;
+      }
+    }
+
+    const qrDir = path.join(process.cwd(), 'public', 'storage');
+    const qrFiles = await fs.readdir(qrDir).catch(() => [] as string[]);
+    for (const name of qrFiles) {
+      if (!name.startsWith('qrcode-')) continue;
+      const full = path.join(qrDir, name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (stat && now - stat.mtimeMs > QRCODE_RETENTION_MS) {
+        await fs.remove(full).catch(() => {});
+        qrCount += 1;
+      }
+    }
+
+    if (logCount > 0 || qrCount > 0) {
+      this.logger.log(`清理过期文件：日志 ${logCount} 个，二维码 ${qrCount} 个`);
+    }
+  }
+
   private emitLog(taskId: string, chunk: string) {
     this.eventEmitter.emit('build.log', { taskId, logChunk: chunk });
     const logDest = path.join(this.logDir, `build-${taskId}.log`);
@@ -662,15 +759,25 @@ export class BuildJobProcessor extends WorkerHost {
   }
 
   /**
-   * 根据 lock 文件、packageManager 字段、preinstall 脚本自动检测包管理器
+   * 根据 lock 文件、packageManager 字段、preinstall 脚本自动检测包管理器，
+   * 并把依赖缓存指向持久目录，避免每次都全量重新下载。
    */
   private async detectInstallCommand(workspaceDir: string): Promise<string> {
+    const cacheRoot = path.join(process.cwd(), 'var', 'cache');
+    await this.maybePruneCache(cacheRoot);
+
+    const pnpmStore = path.join(cacheRoot, 'pnpm');
+    const yarnCache = path.join(cacheRoot, 'yarn');
+    const npmCache = path.join(cacheRoot, 'npm');
+    const pnpmCmd = `pnpm install --no-frozen-lockfile --store-dir "${pnpmStore}"`;
+    const yarnCmd = `yarn install --cache-folder "${yarnCache}"`;
+
     // 1. 优先检查 lock 文件
     if (await fs.pathExists(path.join(workspaceDir, 'pnpm-lock.yaml'))) {
-      return 'pnpm install --no-frozen-lockfile';
+      return pnpmCmd;
     }
     if (await fs.pathExists(path.join(workspaceDir, 'yarn.lock'))) {
-      return 'yarn install';
+      return yarnCmd;
     }
 
     // 2. 读取 package.json 检查 packageManager 字段和 preinstall 脚本
@@ -683,17 +790,74 @@ export class BuildJobProcessor extends WorkerHost {
       const preinstall = pkgJson.scripts?.preinstall;
 
       if (packageManager?.startsWith('pnpm') || preinstall?.includes('only-allow pnpm')) {
-        return 'pnpm install --no-frozen-lockfile';
+        return pnpmCmd;
       }
       if (packageManager?.startsWith('yarn') || preinstall?.includes('only-allow yarn')) {
-        return 'yarn install';
+        return yarnCmd;
       }
     } catch {
       // package.json 解析失败则忽略
     }
 
     // 3. 默认 npm
-    return 'npm install --legacy-peer-deps --force';
+    return `npm install --legacy-peer-deps --force --cache "${npmCache}"`;
+  }
+
+  /**
+   * 依赖缓存超过上限时整目录清理（无法精细 LRU，干脆重建）。
+   * 每 6 小时最多检查一次，避免每次构建都递归统计大目录。
+   */
+  private async maybePruneCache(cacheRoot: string): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastCachePruneAt < 6 * 60 * 60 * 1000) return;
+    this.lastCachePruneAt = now;
+
+    try {
+      if (!(await fs.pathExists(cacheRoot))) return;
+      const size = await this.dirSize(cacheRoot);
+      const LIMIT = 5 * 1024 * 1024 * 1024;
+      if (size > LIMIT) {
+        this.logger.warn(
+          `构建缓存已达 ${(size / 1024 / 1024 / 1024).toFixed(1)}GB，超过上限，清理重建`,
+        );
+        await fs.remove(cacheRoot);
+      }
+    } catch {
+      // 清理失败不影响构建
+    }
+  }
+
+  /** 读取工作区当前 HEAD 的 commit hash，失败返回 null（不影响构建） */
+  private async resolveCommitHash(cwd: string, env?: NodeJS.ProcessEnv): Promise<string | null> {
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+        cwd,
+        env,
+        timeout: 10_000,
+      });
+      const hash = String(stdout).trim();
+      return /^[0-9a-f]{40}$/.test(hash) ? hash : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 递归统计目录体积（字节），用于记录包体积 */
+  private async dirSize(dir: string): Promise<number> {
+    let total = 0;
+    const walk = async (current: string): Promise<void> => {
+      const entries = await fs.readdir(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          await walk(full);
+        } else if (entry.isFile()) {
+          total += (await fs.stat(full)).size;
+        }
+      }
+    };
+    await walk(dir).catch(() => {});
+    return total;
   }
 
   /**

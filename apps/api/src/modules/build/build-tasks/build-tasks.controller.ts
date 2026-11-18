@@ -86,6 +86,17 @@ export class BuildTasksController {
     return this.buildTasksService.deleteTask(taskId);
   }
 
+  @Post(':taskId/retry')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: '按原参数重新构建（失败重试）' })
+  @ApiResultResponse()
+  retryTask(@Param('taskId') taskId: string, @Request() req: ExpressRequest) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const user = (req as any).user as User;
+    return this.buildTasksService.retryTask(taskId, user);
+  }
+
   @Post(':taskId/reupload')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)

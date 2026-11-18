@@ -154,6 +154,8 @@ model BuildTask {
   logPath      String?    @map("log_path") @db.Text
   artifactPath String?    @map("artifact_path") @db.Text
   qrcodePath   String?    @map("qrcode_path") @db.Text
+  /** 上传产物大小（字节）。小程序主包有 2MB 硬限制，包体积趋势是刚需 */
+  packageSize  Int?       @map("package_size")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 

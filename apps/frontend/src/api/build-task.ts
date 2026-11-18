@@ -18,6 +18,8 @@ export interface BuildTaskDto {
   artifactPath?: string
   /** 构建日志文件路径 */
   logPath?: string
+  /** 上传产物大小（字节），小程序主包有 2MB 限制 */
+  packageSize?: number
 }
 
 export function getBuildTasks(projectId: string, params?: { page?: number, limit?: number }) {
@@ -53,6 +55,14 @@ export function deleteTask(taskId: string) {
 export function reuploadFromHistory(taskId: string) {
   return request({
     url: `/build-tasks/${taskId}/reupload`,
+    method: 'post'
+  }) as Promise<any>
+}
+
+/** 按原分支与参数重新构建一次（失败重试） */
+export function retryBuild(taskId: string) {
+  return request({
+    url: `/build-tasks/${taskId}/retry`,
     method: 'post'
   }) as Promise<any>
 }
