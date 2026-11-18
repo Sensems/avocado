@@ -20,7 +20,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message = exception instanceof HttpException ? exception.message : '内部服务器错误';
+    let message = exception instanceof HttpException ? exception.message : '内部服务器错误';
 
     // 非 HttpException（未预期的错误）必须记录完整堆栈，否则线上只能看到一句"内部服务器错误"
     if (!(exception instanceof HttpException)) {
@@ -39,6 +39,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
       'message' in exceptionResponse
     ) {
       errorDetails = (exceptionResponse as Record<string, unknown>).message as string | string[];
+
+      // BadRequestException 自带的 message 是「Bad Request Exception」这种无信息量的短语，
+      // 真正的校验原因藏在 getResponse().message 里。前端多数只读 message，
+      // 不把它顶上去的话，用户永远只能看到「Bad Request Exception」。
+      if (Array.isArray(errorDetails) && errorDetails.length > 0) {
+        message = errorDetails.join('; ');
+      } else if (typeof errorDetails === 'string' && errorDetails.trim() && status < 500) {
+        message = errorDetails;
+      }
     }
 
     response.status(status).json({

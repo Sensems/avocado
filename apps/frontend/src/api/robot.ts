@@ -5,7 +5,7 @@ export interface RobotDto {
   name: string
   platform: 'wecom' | 'dingtalk' | 'feishu'
   webhookUrl: string
-  secret?: string
+  secretToken?: string
 }
 
 export function getRobots() {

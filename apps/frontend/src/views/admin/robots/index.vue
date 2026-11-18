@@ -16,7 +16,7 @@ const submitting = ref(false)
 /** 编辑时存储当前记录 id，null 表示新建模式 */
 const editingId = ref<string | null>(null)
 
-const emptyForm = (): RobotDto => ({ name: '', platform: 'wecom', webhookUrl: '', secret: '' })
+const emptyForm = (): RobotDto => ({ name: '', platform: 'wecom', webhookUrl: '', secretToken: '' })
 
 const form = ref<RobotDto>(emptyForm())
 
@@ -44,7 +44,7 @@ const openCreate = () => {
 
 const openEdit = (row: RobotDto) => {
   editingId.value = row.id as string
-  form.value = { name: row.name, platform: row.platform, webhookUrl: row.webhookUrl, secret: '' }
+  form.value = { name: row.name, platform: row.platform, webhookUrl: row.webhookUrl, secretToken: '' }
   dialogVisible.value = true
 }
 
@@ -152,7 +152,7 @@ onMounted(() => {
         </n-form-item>
 
         <n-form-item :label="t('admin.robots.dialog.secret')">
-          <n-input v-model:value="form.secret"
+          <n-input v-model:value="form.secretToken"
             :placeholder="editingId ? t('admin.robots.dialog.secretEditPlaceholder') : t('admin.robots.dialog.secretPlaceholder')" />
         </n-form-item>
       </n-form>
