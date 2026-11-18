@@ -56,6 +56,8 @@ const zhCN = {
     statusSuccess: '成功',
     statusFailed: '失败',
     statusRunning: '运行中',
+    statusCanceled: '已取消',
+    statusPending: '排队中',
   },
 
   projects: {

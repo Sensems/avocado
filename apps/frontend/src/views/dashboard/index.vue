@@ -249,6 +249,8 @@ const statusLabel = (status: string) => {
     success: t('dashboard.statusSuccess'),
     failed: t('dashboard.statusFailed'),
     running: t('dashboard.statusRunning'),
+    canceled: t('dashboard.statusCanceled'),
+    pending: t('dashboard.statusPending'),
   }
   return map[status] ?? status
 }

@@ -29,15 +29,21 @@ export class DashboardService {
     });
 
     const buildTrendsMap = new Map<string, { date: string; success: number; failed: number }>();
+    // 必须用本地日期格式化，不能用 toISOString()。
+    // startOfDay 返回的是本地 00:00（GMT+8），转成 UTC 后是前一天 16:00，
+    // split('T')[0] 会整体左移一天，导致「今天的构建」永远进不了趋势图。
+    const fmtLocalDate = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
+
     for (let i = 0; i < 7; i++) {
-      const dateStr = subDays(today, 6 - i)
-        .toISOString()
-        .split('T')[0];
+      const dateStr = fmtLocalDate(subDays(today, 6 - i));
       buildTrendsMap.set(dateStr, { date: dateStr, success: 0, failed: 0 });
     }
 
     for (const task of buildTasks) {
-      const dateStr = task.createdAt.toISOString().split('T')[0];
+      const dateStr = fmtLocalDate(task.createdAt);
       const entry = buildTrendsMap.get(dateStr);
       if (entry) {
         if (task.status === 'success') entry.success++;

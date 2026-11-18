@@ -56,6 +56,8 @@ const enUS = {
     statusSuccess: 'Success',
     statusFailed: 'Failed',
     statusRunning: 'Running',
+    statusCanceled: 'Canceled',
+    statusPending: 'Pending',
   },
 
   projects: {
