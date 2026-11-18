@@ -80,18 +80,34 @@ model Project {
   historyEnabled  Boolean       @default(false) @map("history_enabled")
   defaultBranch   String?       @map("default_branch") @db.VarChar(100)
   webhookSecret  String?       @map("webhook_secret") @db.VarChar(255)
-  imRobotIds     Json?         @map("im_robot_ids") // Array of ImRobot IDs
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
+  /// 软删除时间。删项目会级联删掉全部构建历史，因此只标记不物理删除
+  deletedAt      DateTime?     @map("deleted_at")
 
   gitCredentialId String        @map("git_credential_id") @db.Uuid
   gitCredential   GitCredential @relation(fields: [gitCredentialId], references: [id])
 
+  imRobots   ProjectImRobot[]
   members    ProjectMember[]
   buildTasks BuildTask[]
 
   @@unique([name])
   @@map("projects")
+}
+
+/// 项目与 IM 机器人的多对多关联。
+/// 早期用 Project.imRobotIds 的 JSON 数组存，无法做外键、无法 JOIN、删除机器人后残留脏 ID。
+model ProjectImRobot {
+  projectId String @map("project_id") @db.Uuid
+  robotId   String @map("robot_id") @db.Uuid
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  robot   ImRobot @relation(fields: [robotId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, robotId])
+  @@index([robotId])
+  @@map("project_im_robots")
 }
 
 model ProjectMember {
@@ -140,6 +156,8 @@ model ImRobot {
   createdById String @map("created_by") @db.Uuid
   createdBy   User   @relation(fields: [createdById], references: [id])
 
+  projects ProjectImRobot[]
+
   @@map("im_robots")
 }
 
@@ -156,6 +174,8 @@ model BuildTask {
   qrcodePath   String?    @map("qrcode_path") @db.Text
   /** 上传产物大小（字节）。小程序主包有 2MB 硬限制，包体积趋势是刚需 */
   packageSize  Int?       @map("package_size")
+  /** 失败原因（仅供展示）。logPath 只用于存放日志路径，不再混入错误文本 */
+  failReason   String?    @map("fail_reason") @db.Text
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 

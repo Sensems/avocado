@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import { buildSignedPath } from '../../../common/utils/signed-url.helper';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TriggerBuildDto } from './dto/trigger-build.dto';
 import { User, TaskStatus } from '@prisma/client';
@@ -191,7 +192,13 @@ export class BuildTasksService {
         where: { projectId },
       }),
     ]);
-    return { items, total };
+    // 二维码静态路径必须带签名才能访问（任务 ID 自增，裸路径可被遍历）
+    const signedItems = items.map((task) => ({
+      ...task,
+      qrcodePath: task.qrcodePath ? buildSignedPath(task.qrcodePath) : null,
+    }));
+
+    return { items: signedItems, total };
   }
 
   /**

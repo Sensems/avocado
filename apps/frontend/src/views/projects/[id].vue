@@ -11,7 +11,7 @@ import { addProjectMember, updateProjectMemberRole, removeProjectMember } from '
 import type { ProjectMemberDto } from '@/api/project-member'
 import { getUsers } from '@/api/user'
 import WebSocketTerminal from '@/components/WebSocketTerminal.vue'
-import { useMessage, useDialog, NTag, NButton, NSelect, NDrawer, NDrawerContent } from 'naive-ui'
+import { useMessage, useDialog, NTag, NButton, NSelect, NDrawer, NDrawerContent, NTooltip } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 const message = useMessage()
@@ -493,7 +493,15 @@ const buildColumns = computed(() => [
     {
         title: t('projectDetail.history.colStatus'), key: 'status', width: 120, render(row: BuildTaskDto) {
             const type = row.status === 'success' ? 'success' : row.status === 'failed' ? 'error' : row.status === 'running' ? 'info' : 'warning';
-            return h(NTag, { type, size: 'small', bordered: false }, { default: () => row.status?.toUpperCase() })
+            const tag = h(NTag, { type, size: 'small', bordered: false }, { default: () => row.status?.toUpperCase() })
+            // 失败时鼠标悬停显示原因，避免用户必须去翻日志
+            if (row.status === 'failed' && row.failReason) {
+                return h(NTooltip, { trigger: 'hover', placement: 'top' }, {
+                    trigger: () => tag,
+                    default: () => h('div', { class: 'max-w-xs whitespace-pre-wrap break-all text-xs' }, row.failReason)
+                })
+            }
+            return tag
         }
     },
     {

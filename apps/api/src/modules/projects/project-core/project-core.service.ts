@@ -4,7 +4,7 @@ import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
-import { User, ProjectRole, Prisma, FrameworkType } from '@prisma/client';
+import { User, ProjectRole, FrameworkType } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { randomBytes } from 'crypto';
@@ -38,7 +38,6 @@ export class ProjectCoreService {
             appId: createDto.appId ?? null,
             repoUrl: createDto.repositoryUrl,
             gitCredentialId: createDto.gitCredentialId as string,
-            imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
             framework: createDto.framework ?? FrameworkType.native,
             webhookSecret: generatedWebhookSecret,
           },
@@ -65,6 +64,20 @@ export class ProjectCoreService {
           },
         });
 
+        // 关联 IM 机器人（中间表，替代原先的 JSON 数组）
+        if (createDto.imRobotIds?.length) {
+          const validRobots = await tx.imRobot.findMany({
+            where: { id: { in: createDto.imRobotIds } },
+            select: { id: true },
+          });
+          if (validRobots.length > 0) {
+            await tx.projectImRobot.createMany({
+              data: validRobots.map((robot) => ({ projectId: project.id, robotId: robot.id })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
         return project;
       });
     } catch (e: unknown) {
@@ -83,19 +96,20 @@ export class ProjectCoreService {
     if (user.isSuperAdmin) {
       const [items, total] = await Promise.all([
         this.prisma.project.findMany({
+          where: { deletedAt: null },
           skip,
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } },
         }),
-        this.prisma.project.count(),
+        this.prisma.project.count({ where: { deletedAt: null } }),
       ]);
       const mappedItems = items.map((p) => ({ ...p, lastBuild: p.buildTasks[0] || null }));
       return { items: mappedItems, total };
     } else {
       const [memberships, total] = await Promise.all([
         this.prisma.projectMember.findMany({
-          where: { userId: user.id },
+          where: { userId: user.id, project: { deletedAt: null } },
           include: {
             project: {
               include: { buildTasks: { orderBy: { createdAt: 'desc' }, take: 1 } },
@@ -106,7 +120,7 @@ export class ProjectCoreService {
           take: limit,
         }),
         this.prisma.projectMember.count({
-          where: { userId: user.id },
+          where: { userId: user.id, project: { deletedAt: null } },
         }),
       ]);
       const items = memberships.map((m) => ({
@@ -119,8 +133,9 @@ export class ProjectCoreService {
   }
 
   async findOne(id: string) {
-    const project = await this.prisma.project.findUnique({
-      where: { id },
+    // 用 findFirst 而非 findUnique：需要额外过滤软删除标记
+    const project = await this.prisma.project.findFirst({
+      where: { id, deletedAt: null },
       include: {
         members: {
           include: {
@@ -131,6 +146,9 @@ export class ProjectCoreService {
         },
         gitCredential: {
           select: { id: true, name: true, type: true },
+        },
+        imRobots: {
+          select: { robotId: true },
         },
       },
     });
@@ -143,7 +161,9 @@ export class ProjectCoreService {
     const apiBaseUrl = this.configService.get<string>('API_BASE_URL', '');
     const webhookUrl = `${apiBaseUrl}/api/build-tasks/webhook/${project.id}`;
 
-    return { ...project, webhookUrl };
+    // 对外仍然暴露 imRobotIds 数组，前端无需感知中间表的存在
+    const { imRobots, ...rest } = project;
+    return { ...rest, imRobotIds: imRobots.map((r) => r.robotId), webhookUrl };
   }
 
   async update(id: string, updateDto: UpdateProjectDto, file?: Express.Multer.File) {
@@ -158,14 +178,13 @@ export class ProjectCoreService {
       privateKeyPath = keyFilePath;
     }
 
-    return this.prisma.project.update({
+    const updated = await this.prisma.project.update({
       where: { id },
       data: {
         name: updateDto.name,
         appId: updateDto.appId ?? null,
         repoUrl: updateDto.repositoryUrl,
         gitCredentialId: updateDto.gitCredentialId as string,
-        imRobotIds: updateDto.imRobotIds ? updateDto.imRobotIds : Prisma.DbNull,
         framework: updateDto.framework as FrameworkType,
         distPath: updateDto.distPath,
         buildCommand: updateDto.buildCommand,
@@ -176,11 +195,43 @@ export class ProjectCoreService {
         privateKeyPath,
       } as any,
     });
+
+    // 机器人关联采用「整体替换」语义：传了数组就重写，没传则保持不变
+    if (updateDto.imRobotIds !== undefined) {
+      const robotIds = updateDto.imRobotIds;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.projectImRobot.deleteMany({ where: { projectId: id } });
+        if (robotIds.length > 0) {
+          const validRobots = await tx.imRobot.findMany({
+            where: { id: { in: robotIds } },
+            select: { id: true },
+          });
+          if (validRobots.length > 0) {
+            await tx.projectImRobot.createMany({
+              data: validRobots.map((robot) => ({ projectId: id, robotId: robot.id })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      });
+    }
+
+    return updated;
   }
 
   async remove(id: string) {
-    await this.findOne(id); // 检查是否存在
-    await this.prisma.project.delete({ where: { id } });
+    const project = await this.findOne(id); // 检查是否存在（已排除软删除的）
+
+    // 软删除：物理删除会级联清空全部构建历史与审计链路。
+    // 同时改写 name 释放唯一约束，否则同名项目永远无法重建。
+    const suffix = `__deleted_${Date.now()}`;
+    const freedName = project.name.slice(0, Math.max(1, 100 - suffix.length)) + suffix;
+
+    await this.prisma.project.update({
+      where: { id },
+      data: { deletedAt: new Date(), name: freedName },
+    });
+
     return { success: true };
   }
 

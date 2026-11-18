@@ -23,6 +23,7 @@ import {
   type GitAuthContext,
 } from '../../../../common/utils/git-auth.helper';
 import { decrypt } from '../../../../common/utils/crypto.util';
+import { buildSignedPath } from '../../../../common/utils/signed-url.helper';
 import AdmZip from 'adm-zip';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -92,7 +93,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
     // 2. 获取项目详情以获取仓库 URL、构建命令和凭证
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      include: { gitCredential: true },
+      include: { gitCredential: true, imRobots: { select: { robotId: true } } },
     });
 
     if (!project) {
@@ -155,7 +156,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         .join('\n');
 
       await this.notifyRobots(
-        project.imRobotIds as string[] | null,
+        project.imRobots.map((r) => r.robotId),
         `🚀 开始构建: ${project.name}`,
         startContent,
       );
@@ -390,10 +391,10 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
 
         // 通知广播（包含体验版二维码图片）
         const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-        const qrcodeUrl = `${baseUrl}/storage/${qrcodeFileName}`;
+        const qrcodeUrl = `${baseUrl}${buildSignedPath(`/storage/${qrcodeFileName}`)}`;
 
         await this.notifyRobots(
-          project.imRobotIds as string[] | null,
+          project.imRobots.map((r) => r.robotId),
           `✅ 构建成功: ${project.name}`,
           `分支: ${branch}\n版本: ${version}`,
           qrcodeUrl,
@@ -420,10 +421,13 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       this.emitLog(taskId, `[ERROR] 构建失败: ${err.message}`);
       await this.markFailed(taskId, err.message);
 
-      const p = await this.prisma.project.findUnique({ where: { id: projectId } });
+      const p = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        include: { imRobots: { select: { robotId: true } } },
+      });
       if (p) {
         await this.notifyRobots(
-          p.imRobotIds as string[] | null,
+          p.imRobots.map((r) => r.robotId),
           `❌ 构建失败: ${p.name}`,
           `原因: ${err.message}`,
         );
@@ -451,7 +455,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
 
     const project = await this.prisma.project.findUnique({
       where: { id: projectId },
-      include: { gitCredential: true },
+      include: { gitCredential: true, imRobots: { select: { robotId: true } } },
     });
     if (!project) {
       await this.markFailed(taskId, '项目配置缺失或已删除。');
@@ -482,7 +486,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       });
 
       await this.notifyRobots(
-        project.imRobotIds as string[] | null,
+        project.imRobots.map((r) => r.robotId),
         `🔄 历史版本上传开始: ${project.name}`,
         `版本: ${version ?? '未指定'}\n触发人: ${data.triggerUserName ?? '未知'}`,
       );
@@ -584,9 +588,9 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       });
 
       const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-      const qrcodeUrl = `${baseUrl}/storage/${qrcodeFileName}`;
+      const qrcodeUrl = `${baseUrl}${buildSignedPath(`/storage/${qrcodeFileName}`)}`;
       await this.notifyRobots(
-        project.imRobotIds as string[] | null,
+        project.imRobots.map((r) => r.robotId),
         `✅ 历史版本上传成功: ${project.name}`,
         `版本: ${version}\n触发人: ${data.triggerUserName ?? '未知'}`,
         qrcodeUrl,
@@ -597,10 +601,13 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       this.logger.error(`[Reupload] 历史版本上传失败: ${err.message}`);
       this.emitLog(taskId, `[ERROR] 上传失败: ${err.message}`);
       await this.markFailed(taskId, err.message);
-      const p = await this.prisma.project.findUnique({ where: { id: projectId } });
+      const p = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        include: { imRobots: { select: { robotId: true } } },
+      });
       if (p) {
         await this.notifyRobots(
-          p.imRobotIds as string[] | null,
+          p.imRobots.map((r) => r.robotId),
           `❌ 历史版本上传失败: ${p.name}`,
           `原因: ${err.message}`,
         );
@@ -628,7 +635,8 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
 
   private async markFailed(taskId: string, reason: string) {
     this.emitLog(taskId, `[SYSTEM ERROR] ${reason}`);
-    // 只在 pending/running 时标记失败，避免把用户已取消的任务覆盖成 failed
+    // 只在 pending/running 时标记失败，避免把用户已取消的任务覆盖成 failed。
+    // 失败原因写入独立字段，logPath 只保留日志路径，避免前端把它当 URL 用坏。
     await this.prisma.buildTask.updateMany({
       where: {
         id: BigInt(taskId),
@@ -636,6 +644,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       },
       data: {
         status: TaskStatus.failed,
+        failReason: reason.slice(0, 2000),
         logPath: `/storage/logs/build-${taskId}.log`,
       },
     });

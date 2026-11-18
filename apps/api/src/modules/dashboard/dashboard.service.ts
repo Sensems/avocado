@@ -11,7 +11,7 @@ export class DashboardService {
 
     // 1. Overview Metrics
     const [totalProjects, totalUsers, todayBuilds, activeBuilds] = await Promise.all([
-      this.prisma.project.count(),
+      this.prisma.project.count({ where: { deletedAt: null } }),
       this.prisma.user.count(),
       this.prisma.buildTask.count({
         where: { createdAt: { gte: today } },
@@ -49,6 +49,7 @@ export class DashboardService {
     // 3. Project Distribution
     const projectGroupByFramework = await this.prisma.project.groupBy({
       by: ['framework'],
+      where: { deletedAt: null },
       _count: {
         _all: true,
       },
@@ -75,7 +76,7 @@ export class DashboardService {
 
     const topProjectsRawIds = topProjectsRaw.map((p) => p.projectId);
     const topProjectDetails = await this.prisma.project.findMany({
-      where: { id: { in: topProjectsRawIds } },
+      where: { id: { in: topProjectsRawIds }, deletedAt: null },
       select: { id: true, name: true },
     });
 
@@ -90,6 +91,7 @@ export class DashboardService {
 
     // 5. Recent Activity
     const recentActivityRaw = await this.prisma.buildTask.findMany({
+      where: { project: { deletedAt: null } },
       take: 10,
       orderBy: { createdAt: 'desc' },
       select: {

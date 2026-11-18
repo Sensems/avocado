@@ -20,6 +20,8 @@ export interface BuildTaskDto {
   logPath?: string
   /** 上传产物大小（字节），小程序主包有 2MB 限制 */
   packageSize?: number
+  /** 失败原因（仅 failed 状态有值） */
+  failReason?: string
 }
 
 export function getBuildTasks(projectId: string, params?: { page?: number, limit?: number }) {
