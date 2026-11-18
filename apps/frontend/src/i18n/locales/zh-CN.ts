@@ -13,6 +13,8 @@ const zhCN = {
     logout: '退出登录',
     loading: '加载中...',
     noData: '暂无数据',
+    forbidden: '您没有权限访问此页面',
+    backToHome: '返回首页',
   },
 
   nav: {
@@ -44,6 +46,16 @@ const zhCN = {
     topProjects: '活跃项目 Top 5',
     recentActivity: '最新构建动态',
     noRecentActivity: '暂无最近活动',
+    seriesSuccess: '成功',
+    seriesFailed: '失败',
+    seriesBuilds: '构建次数',
+    seriesFramework: '框架',
+    loading: '正在加载仪表盘数据…',
+    triggeredBy: '触发人',
+    fetchFailed: '获取仪表盘数据失败',
+    statusSuccess: '成功',
+    statusFailed: '失败',
+    statusRunning: '运行中',
   },
 
   projects: {
@@ -88,6 +100,7 @@ const zhCN = {
       branchEmpty: '未获取到任何分支，请检查仓库地址和凭证',
       branchSuccess: '已获取 {count} 个分支',
       branchError: '获取分支失败，请检查仓库地址和凭证',
+      branchRequired: '请选择构建分支',
     },
     framework: {
       native: '原生小程序',
@@ -186,6 +199,12 @@ const zhCN = {
       webhookUrl: 'Webhook 地址',
       copyWebhookUrl: '复制',
       copySuccess: '已复制到剪贴板',
+      copyFailed: '复制失败，请手动选择复制',
+      frameworkNative: '原生小程序',
+      appIdPlaceholder: 'wx1234567890abcdef（微信小程序 AppID）',
+      hasUploadedKey: '已有上传的密钥文件',
+      goToCredentialsPage: '前往凭证管理页面',
+      goToRobotsPage: '前往机器人管理页面',
       gitCredential: 'Git 凭证',
       gitCredentialPlaceholder: '选择 Git 凭证',
       imRobots: 'IM 机器人',
@@ -212,6 +231,8 @@ const zhCN = {
       artifact: '构建产物',
       log: '构建日志',
       downloadBtn: '下载',
+      logFailed: '日志下载失败',
+      logEmpty: '日志内容为空',
       noArtifacts: '暂无可下载的产物文件',
     },
 

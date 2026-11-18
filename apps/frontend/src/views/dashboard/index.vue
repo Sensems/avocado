@@ -45,7 +45,7 @@ const fetchStats = async () => {
     const res = await getDashboardStats()
     stats.value = (res as any).data || res
   } catch (error: any) {
-    message.error(error.message || 'Failed to fetch dashboard stats')
+    message.error(error.message || t('dashboard.fetchFailed'))
   } finally {
     loading.value = false
   }
@@ -61,58 +61,99 @@ const buildTrendsOption = computed(() => {
   const dates = stats.value.buildTrends.map((i) => i.date.substring(5))
   const success = stats.value.buildTrends.map((i) => i.success)
   const failed = stats.value.buildTrends.map((i) => i.failed)
+
+  const axisColor = isDark.value ? '#94a3b8' : '#64748b'
+  const splitColor = isDark.value ? 'rgba(148,163,184,0.14)' : '#e8ecf3'
+  const successName = t('dashboard.seriesSuccess')
+  const failedName = t('dashboard.seriesFailed')
+
+  const areaGradient = (rgb: string, alpha: number) => ({
+    type: 'linear',
+    x: 0, y: 0, x2: 0, y2: 1,
+    colorStops: [
+      { offset: 0, color: `rgba(${rgb}, ${alpha})` },
+      { offset: 1, color: `rgba(${rgb}, 0)` }
+    ]
+  })
+
   return {
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: {
-      data: ['Success', 'Failed'],
-      textStyle: { color: isDark.value ? '#94a3b8' : '#64748b' }
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: isDark.value ? 'rgba(24,24,27,0.94)' : 'rgba(255,255,255,0.97)',
+      borderColor: isDark.value ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+      borderWidth: 1,
+      padding: [10, 14],
+      textStyle: { color: isDark.value ? '#e4e4e7' : '#27272a', fontSize: 12 },
+      axisPointer: {
+        type: 'line',
+        lineStyle: {
+          color: isDark.value ? 'rgba(148,163,184,0.35)' : 'rgba(100,116,139,0.25)',
+          width: 1
+        }
+      }
     },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    legend: {
+      data: [successName, failedName],
+      top: 0,
+      right: 0,
+      icon: 'roundRect',
+      itemWidth: 9,
+      itemHeight: 9,
+      itemGap: 18,
+      textStyle: { color: axisColor, fontSize: 12 }
+    },
+    grid: { left: 8, right: 12, top: 54, bottom: 6, containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
       data: dates,
-      axisLabel: { color: isDark.value ? '#94a3b8' : '#64748b' }
+      axisLine: { lineStyle: { color: isDark.value ? 'rgba(148,163,184,0.2)' : '#e2e8f0' } },
+      axisTick: { show: false },
+      axisLabel: { color: axisColor, fontSize: 11 }
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: isDark.value ? '#334155' : '#e2e8f0' } },
-      axisLabel: { color: isDark.value ? '#94a3b8' : '#64748b' }
+      splitLine: { lineStyle: { color: splitColor, type: 'dashed' } },
+      axisLabel: { color: axisColor, fontSize: 11 }
     },
     series: [
       {
-        name: 'Success',
-        type: 'line',
-        smooth: true,
-        itemStyle: { color: '#10b981' },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(16, 185, 129, 0.4)' },
-              { offset: 1, color: 'rgba(16, 185, 129, 0.0)' }
-            ]
-          }
+        name: successName,
+        type: 'line' as const,
+        smooth: 0.35,
+        showSymbol: false,
+        symbol: 'circle',
+        symbolSize: 7,
+        itemStyle: { color: '#34d399' },
+        lineStyle: {
+          width: 2.5,
+          color: '#34d399',
+          shadowColor: 'rgba(52,211,153,0.30)',
+          shadowBlur: 10,
+          shadowOffsetY: 4
         },
+        areaStyle: { color: areaGradient('52,211,153', 0.26) },
+        emphasis: { focus: 'series' as const },
         data: success
       },
       {
-        name: 'Failed',
-        type: 'line',
-        smooth: true,
-        itemStyle: { color: '#ef4444' },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(239, 68, 68, 0.4)' },
-              { offset: 1, color: 'rgba(239, 68, 68, 0.0)' }
-            ]
-          }
+        name: failedName,
+        type: 'line' as const,
+        smooth: 0.35,
+        showSymbol: false,
+        symbol: 'circle',
+        symbolSize: 7,
+        itemStyle: { color: '#fb7185' },
+        lineStyle: {
+          width: 2.5,
+          color: '#fb7185',
+          shadowColor: 'rgba(251,113,133,0.25)',
+          shadowBlur: 10,
+          shadowOffsetY: 4
         },
+        areaStyle: { color: areaGradient('251,113,133', 0.20) },
+        emphasis: { focus: 'series' as const },
         data: failed
       }
     ]
@@ -133,7 +174,7 @@ const frameworkDistOption = computed(() => {
     },
     series: [
       {
-        name: 'Framework',
+        name: t('dashboard.seriesFramework'),
         type: 'pie',
         radius: ['40%', '70%'],
         avoidLabelOverlap: false,
@@ -182,7 +223,7 @@ const topProjectsOption = computed(() => {
     },
     series: [
       {
-        name: 'Builds',
+        name: t('dashboard.seriesBuilds'),
         type: 'bar',
         data: data.map(i => i.buildCount),
         itemStyle: {
@@ -202,6 +243,16 @@ const topProjectsOption = computed(() => {
   }
 })
 
+// 构建状态文案（跟随语言切换）
+const statusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    success: t('dashboard.statusSuccess'),
+    failed: t('dashboard.statusFailed'),
+    running: t('dashboard.statusRunning'),
+  }
+  return map[status] ?? status
+}
+
 // Format time utility
 const formatTime = (isoStr: string) => {
   const d = new Date(isoStr)
@@ -220,7 +271,7 @@ const formatTime = (isoStr: string) => {
     <div v-if="loading" class="flex-1 flex items-center justify-center min-h-[400px]">
       <div class="flex flex-col items-center gap-4">
         <n-spin size="large" />
-        <span class="text-zinc-500">Loading Dashboard Data...</span>
+        <span class="text-zinc-500">{{ t('dashboard.loading') }}</span>
       </div>
     </div>
 
@@ -380,7 +431,7 @@ const formatTime = (isoStr: string) => {
                 </span>
               </div>
               <div class="text-sm text-zinc-500">
-                Triggered by <span class="text-zinc-400">{{ item.triggerUser }}</span>
+                {{ t('dashboard.triggeredBy') }} <span class="text-zinc-400">{{ item.triggerUser }}</span>
                 <span class="mx-2">·</span>
                 {{ formatTime(item.createdAt) }}
               </div>
@@ -392,7 +443,7 @@ const formatTime = (isoStr: string) => {
               [isDark ? 'text-blue-400' : 'text-blue-600']: item.status === 'running',
               'text-zinc-500': !['success', 'failed', 'running'].includes(item.status)
             }">
-              {{ item.status }}
+              {{ statusLabel(item.status) }}
             </div>
 
           </div>

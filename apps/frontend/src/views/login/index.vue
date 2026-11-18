@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useAuthStore } from '@/store/auth'
 import { useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 
 const authStore = useAuthStore()
 const message = useMessage()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const loading = ref(false)
+
+// 语言切换
+const langOptions = [
+  { label: '🇨🇳 中文', key: 'zh-CN' },
+  { label: '🇺🇸 English', key: 'en-US' },
+]
+
+const currentLangLabel = computed(() => (locale.value === 'zh-CN' ? '中文' : 'EN'))
+
+const handleLangSelect = (key: string) => {
+  locale.value = key
+  localStorage.setItem('locale', key)
+}
 
 const loginForm = ref({
   username: '',
@@ -36,6 +49,23 @@ const handleLogin = async () => {
 
 <template>
   <div class="h-screen w-full flex items-center justify-center bg-zinc-900 overflow-hidden relative">
+    <!-- 语言切换 -->
+    <div class="absolute top-6 right-6 z-20">
+      <n-dropdown :options="langOptions" trigger="click" @select="handleLangSelect">
+        <button type="button"
+          class="flex items-center gap-1.5 px-3 h-9 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all text-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+          </svg>
+          <span>{{ currentLangLabel }}</span>
+          <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </n-dropdown>
+    </div>
+
     <!-- Abstract blurred background art -->
     <div
       class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-violet-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20">
@@ -71,8 +101,8 @@ const handleLogin = async () => {
         </n-button>
       </n-form>
 
-      <p class="text-center text-zinc-500 text-sm mt-8">
-        仅限授权人员访问。 <br /> 由 Avocado Auth 保障安全。
+      <p class="text-center text-zinc-500 text-sm mt-8 whitespace-pre-line leading-relaxed">
+        {{ t('login.footer') }}
       </p>
     </div>
   </div>
