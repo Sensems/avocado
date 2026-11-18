@@ -5,31 +5,19 @@ import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { BUILD_QUEUE_NAME, BuildJobData } from '../interfaces/build-job.interface';
 import { PrismaService } from '../../../../common/prisma/prisma.service';
 import { RobotPoolService } from '../../robot-pool/robot-pool.service';
-import { ImRobotsService } from '../../../resources/im-robots/im-robots.service';
+import { BuildNotifier } from '../build-notifier.service';
 import { ArtifactsService } from '../../artifacts/artifacts.service';
 import { TaskStatus } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { spawn, execFile } from 'child_process';
-import { promisify } from 'util';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
-import * as crypto from 'crypto';
-import axios from 'axios';
-import {
-  buildGitAuthContext,
-  buildNoAuthContext,
-  type GitAuthContext,
-} from '../../../../common/utils/git-auth.helper';
 import { decrypt } from '../../../../common/utils/crypto.util';
 import { buildSignedPath } from '../../../../common/utils/signed-url.helper';
 import AdmZip from 'adm-zip';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import * as ci from 'miniprogram-ci';
-
-const execFileAsync = promisify(execFile);
+import { MiniprogramUploader } from '../miniprogram-uploader.service';
+import { BuildRunner } from '../build-runner.service';
 
 /** 用户取消任务时抛出的内部信号：跳过后续步骤，且不算构建失败 */
 class TaskCanceledError extends Error {
@@ -57,8 +45,10 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
     private readonly prisma: PrismaService,
     private readonly robotPoolService: RobotPoolService,
     private readonly eventEmitter: EventEmitter2,
-    private readonly imRobotsService: ImRobotsService,
     private readonly artifactsService: ArtifactsService,
+    private readonly notifier: BuildNotifier,
+    private readonly uploader: MiniprogramUploader,
+    private readonly runner: BuildRunner,
   ) {
     super();
   }
@@ -155,7 +145,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         .filter(Boolean)
         .join('\n');
 
-      await this.notifyRobots(
+      await this.notifier.notify(
         project.imRobots.map((r) => r.robotId),
         `🚀 开始构建: ${project.name}`,
         startContent,
@@ -169,76 +159,44 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[1/4] 正在克隆仓库 ${project.repoUrl}...`);
 
-        // 构建 git 认证上下文（支持私有仓库 SSH / HTTPS PAT / 密码）
-        let gitAuth: GitAuthContext = buildNoAuthContext();
-        if (project.gitCredential) {
-          try {
-            gitAuth = await buildGitAuthContext(
-              {
+        // 克隆、凭证注入与清理都封装在 BuildRunner 里
+        const commitHash = await this.runner.cloneRepo({
+          repoUrl: project.repoUrl,
+          branch,
+          workspaceDir,
+          credential: project.gitCredential
+            ? {
+                name: project.gitCredential.name,
                 type: project.gitCredential.type,
                 username: project.gitCredential.username,
                 plainSecret: decrypt(project.gitCredential.secret),
-              },
-              project.repoUrl,
-            );
-            this.emitLog(taskId, `已加载 Git 凭证: ${project.gitCredential.name}`);
-          } catch (e) {
-            this.emitLog(
-              taskId,
-              `[WARN] 加载 Git 凭证失败，将尝试匿名克隆: ${(e as Error).message}`,
-            );
-          }
-        }
+              }
+            : null,
+          onLog: (message) => this.emitLog(taskId, message),
+        });
 
-        try {
-          // git clone 使用认证上下文（私有仓库需要凭证，公开仓库无凭证也可）
-          this.assertSafeBranch(branch);
-          await this.runExec(
-            'git',
-            [...gitAuth.extraArgs, 'clone', '--depth', '50', '-b', branch, project.repoUrl, '.'],
-            workspaceDir,
-            taskId,
-            gitAuth.env,
-          );
-          this.emitLog(taskId, `克隆成功。`);
-
-          // 记录本次构建对应的 commit，否则构建记录无法追溯到具体代码
-          const commitHash = await this.resolveCommitHash(workspaceDir, gitAuth.env);
-          if (commitHash) {
-            await this.prisma.buildTask.update({
-              where: { id: BigInt(taskId) },
-              data: { commitHash },
-            });
-            this.emitLog(taskId, `当前提交: ${commitHash.slice(0, 8)}`);
-          }
-        } finally {
-          // 必须在克隆完成后清理临时凭证文件
-          await gitAuth.cleanup();
+        // 记录本次构建对应的 commit，否则构建记录无法追溯到具体代码
+        if (commitHash) {
+          await this.prisma.buildTask.update({
+            where: { id: BigInt(taskId) },
+            data: { commitHash },
+          });
+          this.emitLog(taskId, `当前提交: ${commitHash.slice(0, 8)}`);
         }
 
         this.emitLog(taskId, `[2/4] 正在安装依赖项...`);
-        if (await fs.pathExists(path.join(workspaceDir, 'package.json'))) {
-          const installCmd = await this.detectInstallCommand(workspaceDir);
-          this.emitLog(taskId, `使用命令: ${installCmd}`);
-          await this.runShell(installCmd, workspaceDir, taskId);
-          this.emitLog(taskId, `依赖安装完成。`);
-        } else {
-          this.emitLog(taskId, `未找到 package.json，跳过依赖安装。`);
-        }
+        await this.runner.installDependencies(workspaceDir, (message) =>
+          this.emitLog(taskId, message),
+        );
 
         await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[3/4] 运行构建命令（如果有的话）...`);
-        if (project.framework === 'uniapp') {
-          if (!project.buildCommand) {
-            throw new Error('UniApp 项目需要构建命令 (例如 npm run build:mp-weixin)');
-          }
-          this.emitLog(taskId, `执行 UniApp 构建命令: ${project.buildCommand}`);
-          await this.runShell(project.buildCommand, workspaceDir, taskId);
-          this.emitLog(taskId, `构建命令完成。`);
-        } else if (project.buildCommand) {
-          await this.runShell(project.buildCommand, workspaceDir, taskId);
-          this.emitLog(taskId, `构建命令完成。`);
-        }
+        await this.runner.runBuild({
+          workspaceDir,
+          buildCommand: project.buildCommand ?? null,
+          framework: project.framework,
+          onLog: (message) => this.emitLog(taskId, message),
+        });
 
         await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[4/4] 正在通过 miniprogram-ci 上传到微信...`);
@@ -273,71 +231,18 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         const qrcodeDest = path.join(process.cwd(), 'public', 'storage', qrcodeFileName);
         await fs.ensureDir(path.join(process.cwd(), 'public', 'storage'));
 
-        const mpProject = new ci.Project({
-          appid: appId,
-          type: 'miniProgram',
-          projectPath: projectPath,
-          privateKeyPath: privateKeyPath,
-          ignores: ['node_modules/**/*'],
-        });
-
-        try {
-          await ci.upload({
-            project: mpProject,
+        await this.uploader.uploadAndPreview(
+          {
+            appId,
+            projectPath,
+            privateKeyPath,
             version: version || '1.0.0',
             desc: desc || '自动化的 CI 构建',
-            setting: { es6: true, minify: true },
-            robot: robotId,
-            onProgressUpdate: (task: any) => {
-              this.emitLog(taskId, `[CI] ${JSON.stringify(task)}...`);
-            },
-          });
-
-          this.emitLog(taskId, `成功上传到微信！`);
-
-          // 生成体验版二维码
-          this.emitLog(taskId, `[CI] 正在生成体验版二维码...`);
-
-          await ci.preview({
-            project: mpProject,
-            version: version || '1.0.0',
-            desc: desc || '自动化的 CI 构建',
-            setting: { es6: true, minify: true },
-            robot: robotId,
-            qrcodeFormat: 'image',
-            qrcodeOutputDest: qrcodeDest,
-            onProgressUpdate: (task: any) => {
-              if (task._status === 'doing') {
-                this.emitLog(taskId, `[CI] ${task._msg}...`);
-              } else if (task._status === 'done') {
-                this.emitLog(taskId, `[CI] ✔ ${task._msg}`);
-              }
-            },
-          });
-        } finally {
-          // 清理 miniprogram-ci 生成的恶心哈希缓存目录
-          // 代码参考 miniprogram-ci 的 createSummer.js:
-          // ensureCacheDir() {
-          //   const e = path_1.default.join("", (0,tools_1.generateMD5)(this.project.projectPath + "|summer"));
-          //   return (0,tools_1.mkdirSync)(e), e;
-          // }
-          try {
-            const cacheDirHash = crypto
-              .createHash('md5')
-              .update(projectPath + '|summer')
-              .digest('hex');
-
-            const cacheDirPath = path.join(process.cwd(), cacheDirHash);
-            if (await fs.pathExists(cacheDirPath)) {
-              await fs.remove(cacheDirPath);
-            }
-          } catch (e) {
-            this.emitLog(
-              taskId,
-              `[WARN] 清理 miniprogram-ci 缓存目录失败: ${(e as Error).message}`,
-            );
-          }
-        }
+            robotId,
+            onLog: (message) => this.emitLog(taskId, message),
+          },
+          qrcodeDest,
+        );
 
         // 将二维码图片转为 base64 推送到前端终端
         const qrcodeBase64 = await fs.readFile(qrcodeDest, { encoding: 'base64' });
@@ -363,7 +268,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         }
 
         // 记录包体积（必须在清理工作区之前统计）
-        const packageSize = await this.dirSize(projectPath);
+        const packageSize = await this.runner.dirSize(projectPath);
         this.emitLog(taskId, `[INFO] 产物大小: ${(packageSize / 1024).toFixed(1)} KB`);
 
         // 清理工作区
@@ -393,7 +298,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
         const qrcodeUrl = `${baseUrl}${buildSignedPath(`/storage/${qrcodeFileName}`)}`;
 
-        await this.notifyRobots(
+        await this.notifier.notify(
           project.imRobots.map((r) => r.robotId),
           `✅ 构建成功: ${project.name}`,
           `分支: ${branch}\n版本: ${version}`,
@@ -426,7 +331,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         include: { imRobots: { select: { robotId: true } } },
       });
       if (p) {
-        await this.notifyRobots(
+        await this.notifier.notify(
           p.imRobots.map((r) => r.robotId),
           `❌ 构建失败: ${p.name}`,
           `原因: ${err.message}`,
@@ -485,7 +390,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         data: { status: TaskStatus.running, robotId },
       });
 
-      await this.notifyRobots(
+      await this.notifier.notify(
         project.imRobots.map((r) => r.robotId),
         `🔄 历史版本上传开始: ${project.name}`,
         `版本: ${version ?? '未指定'}\n触发人: ${data.triggerUserName ?? '未知'}`,
@@ -530,44 +435,24 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         privateKeyPath = project.privateKeyPath;
       }
 
-      const mpProject = new ci.Project({
-        appid: appId,
-        type: 'miniProgram',
-        projectPath: workspaceDir,
-        privateKeyPath,
-        ignores: ['node_modules/**/*'],
-      });
-
       this.emitLog(taskId, `[2/3] 正在通过 miniprogram-ci 上传到微信...`);
-      await ci.upload({
-        project: mpProject,
-        version: version || '1.0.0',
-        desc: desc || '历史版本快速上传',
-        setting: { es6: true, minify: true },
-        robot: robotId,
-        onProgressUpdate: (t: any) => {
-          this.emitLog(taskId, `[CI] ${JSON.stringify(t)}...`);
-        },
-      });
-      this.emitLog(taskId, `成功上传到微信！`);
-
-      this.emitLog(taskId, `[3/3] 正在生成体验版二维码...`);
       const qrcodeFileName = `qrcode-${taskId}.jpg`;
       const qrcodeDest = path.join(process.cwd(), 'public', 'storage', qrcodeFileName);
       await fs.ensureDir(path.join(process.cwd(), 'public', 'storage'));
 
-      await ci.preview({
-        project: mpProject,
-        version: version || '1.0.0',
-        desc: desc || '历史版本快速上传',
-        setting: { es6: true, minify: true },
-        robot: robotId,
-        qrcodeFormat: 'image',
-        qrcodeOutputDest: qrcodeDest,
-        onProgressUpdate: (t: any) => {
-          if (t._status === 'done') this.emitLog(taskId, `[CI] ✔ ${t._msg}`);
+      await this.uploader.uploadAndPreview(
+        {
+          appId,
+          projectPath: workspaceDir,
+          privateKeyPath,
+          version: version || '1.0.0',
+          desc: desc || '历史版本快速上传',
+          robotId,
+          onLog: (message) => this.emitLog(taskId, message),
         },
-      });
+        qrcodeDest,
+      );
+      this.emitLog(taskId, `[3/3] 二维码已生成。`);
 
       const qrcodeBase64 = await fs.readFile(qrcodeDest, { encoding: 'base64' });
       this.eventEmitter.emit('build.qrcode', {
@@ -589,7 +474,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
 
       const baseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
       const qrcodeUrl = `${baseUrl}${buildSignedPath(`/storage/${qrcodeFileName}`)}`;
-      await this.notifyRobots(
+      await this.notifier.notify(
         project.imRobots.map((r) => r.robotId),
         `✅ 历史版本上传成功: ${project.name}`,
         `版本: ${version}\n触发人: ${data.triggerUserName ?? '未知'}`,
@@ -606,7 +491,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         include: { imRobots: { select: { robotId: true } } },
       });
       if (p) {
-        await this.notifyRobots(
+        await this.notifier.notify(
           p.imRobots.map((r) => r.robotId),
           `❌ 历史版本上传失败: ${p.name}`,
           `原因: ${err.message}`,
@@ -732,260 +617,5 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
     fs.ensureDir(this.logDir)
       .then(() => fs.appendFile(logDest, chunk + '\n'))
       .catch(() => {});
-  }
-
-  private async notifyRobots(
-    robotIds: string[] | null,
-    title: string,
-    content: string,
-    linkUrl?: string,
-    imageUrl?: string,
-  ) {
-    if (!robotIds || !Array.isArray(robotIds) || robotIds.length === 0) return;
-
-    const robots = await this.prisma.imRobot.findMany({
-      where: { id: { in: robotIds } },
-    });
-
-    // 并发发送 + 单条超时：任何一个 IM webhook 挂住都不能拖住整条构建流程
-    await Promise.allSettled(
-      robots.map(async (robot) => {
-        try {
-          const { finalUrl, payload } = this.imRobotsService.buildWebhookMessage(
-            robot,
-            title,
-            content,
-            linkUrl,
-            imageUrl,
-          );
-
-          await axios.post(finalUrl, payload, { timeout: 5000 });
-        } catch (error) {
-          this.logger.error(`Failed to notify robot ${robot.name}: ${(error as Error).message}`);
-        }
-      }),
-    );
-  }
-
-  /**
-   * 根据 lock 文件、packageManager 字段、preinstall 脚本自动检测包管理器，
-   * 并把依赖缓存指向持久目录，避免每次都全量重新下载。
-   */
-  private async detectInstallCommand(workspaceDir: string): Promise<string> {
-    const cacheRoot = path.join(process.cwd(), 'var', 'cache');
-    await this.maybePruneCache(cacheRoot);
-
-    const pnpmStore = path.join(cacheRoot, 'pnpm');
-    const yarnCache = path.join(cacheRoot, 'yarn');
-    const npmCache = path.join(cacheRoot, 'npm');
-    const pnpmCmd = `pnpm install --no-frozen-lockfile --store-dir "${pnpmStore}"`;
-    const yarnCmd = `yarn install --cache-folder "${yarnCache}"`;
-
-    // 1. 优先检查 lock 文件
-    if (await fs.pathExists(path.join(workspaceDir, 'pnpm-lock.yaml'))) {
-      return pnpmCmd;
-    }
-    if (await fs.pathExists(path.join(workspaceDir, 'yarn.lock'))) {
-      return yarnCmd;
-    }
-
-    // 2. 读取 package.json 检查 packageManager 字段和 preinstall 脚本
-    try {
-      const pkgJson = (await fs.readJson(path.join(workspaceDir, 'package.json'))) as {
-        packageManager?: string;
-        scripts?: { preinstall?: string };
-      };
-      const packageManager = pkgJson.packageManager;
-      const preinstall = pkgJson.scripts?.preinstall;
-
-      if (packageManager?.startsWith('pnpm') || preinstall?.includes('only-allow pnpm')) {
-        return pnpmCmd;
-      }
-      if (packageManager?.startsWith('yarn') || preinstall?.includes('only-allow yarn')) {
-        return yarnCmd;
-      }
-    } catch {
-      // package.json 解析失败则忽略
-    }
-
-    // 3. 默认 npm
-    return `npm install --legacy-peer-deps --force --cache "${npmCache}"`;
-  }
-
-  /**
-   * 依赖缓存超过上限时整目录清理（无法精细 LRU，干脆重建）。
-   * 每 6 小时最多检查一次，避免每次构建都递归统计大目录。
-   */
-  private async maybePruneCache(cacheRoot: string): Promise<void> {
-    const now = Date.now();
-    if (now - this.lastCachePruneAt < 6 * 60 * 60 * 1000) return;
-    this.lastCachePruneAt = now;
-
-    try {
-      if (!(await fs.pathExists(cacheRoot))) return;
-      const size = await this.dirSize(cacheRoot);
-      const LIMIT = 5 * 1024 * 1024 * 1024;
-      if (size > LIMIT) {
-        this.logger.warn(
-          `构建缓存已达 ${(size / 1024 / 1024 / 1024).toFixed(1)}GB，超过上限，清理重建`,
-        );
-        await fs.remove(cacheRoot);
-      }
-    } catch {
-      // 清理失败不影响构建
-    }
-  }
-
-  /** 读取工作区当前 HEAD 的 commit hash，失败返回 null（不影响构建） */
-  private async resolveCommitHash(cwd: string, env?: NodeJS.ProcessEnv): Promise<string | null> {
-    try {
-      const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
-        cwd,
-        env,
-        timeout: 10_000,
-      });
-      const hash = String(stdout).trim();
-      return /^[0-9a-f]{40}$/.test(hash) ? hash : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** 递归统计目录体积（字节），用于记录包体积 */
-  private async dirSize(dir: string): Promise<number> {
-    let total = 0;
-    const walk = async (current: string): Promise<void> => {
-      const entries = await fs.readdir(current, { withFileTypes: true });
-      for (const entry of entries) {
-        const full = path.join(current, entry.name);
-        if (entry.isDirectory()) {
-          await walk(full);
-        } else if (entry.isFile()) {
-          total += (await fs.stat(full)).size;
-        }
-      }
-    };
-    await walk(dir).catch(() => {});
-    return total;
-  }
-
-  /**
-   * 校验分支名，防止通过分支参数注入命令。
-   * webhook 的 payload 来自外部，这里是最后一道防线。
-   */
-  private assertSafeBranch(branch: string): void {
-    if (!branch || !/^[A-Za-z0-9._/-]{1,200}$/.test(branch)) {
-      throw new Error(`非法的分支名: ${branch}`);
-    }
-  }
-
-  /**
-   * 执行用户配置的自由命令（依赖安装 / 构建）。
-   * 这类命令本质上就是 shell 脚本，必须走 shell，因此只允许受信任成员配置。
-   */
-  private runShell(
-    command: string,
-    cwd: string,
-    taskId: string,
-    extraEnv?: NodeJS.ProcessEnv,
-  ): Promise<void> {
-    return this.spawnAndStream(command, [], cwd, taskId, { shell: true, env: extraEnv });
-  }
-
-  /**
-   * 执行固定命令 + 参数数组，不经过 shell，参数中的特殊字符不会被解释。
-   */
-  private runExec(
-    file: string,
-    args: string[],
-    cwd: string,
-    taskId: string,
-    extraEnv?: NodeJS.ProcessEnv,
-  ): Promise<void> {
-    return this.spawnAndStream(file, args, cwd, taskId, { shell: false, env: extraEnv });
-  }
-
-  /**
-   * spawn 子进程并实时流式推送 stdout/stderr 日志
-   * @param file     可执行文件（shell 模式下为完整命令字符串）
-   * @param args     参数数组（shell 模式下为空）
-   * @param cwd      工作目录
-   * @param taskId   构建任务 ID（用于日志推送）
-   * @param options  shell 开关与额外环境变量
-   */
-  private spawnAndStream(
-    file: string,
-    args: string[],
-    cwd: string,
-    taskId: string,
-    options: { shell: boolean; env?: NodeJS.ProcessEnv },
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(file, args, {
-        cwd,
-        shell: options.shell,
-        env: { ...process.env, CI: 'true', ...options.env },
-      });
-
-      let lastStderr = '';
-
-      child.stdout?.on('data', (data: Buffer) => {
-        const lines = data.toString().trim().split('\n');
-        for (const line of lines) {
-          if (line.trim()) {
-            this.emitLog(taskId, line);
-          }
-        }
-      });
-
-      child.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString().trim();
-        lastStderr = text;
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (line.trim()) {
-            this.emitLog(taskId, `[stderr] ${line}`);
-          }
-        }
-      });
-
-      let settled = false;
-      let timer: NodeJS.Timeout | undefined;
-
-      // 统一的收尾：保证 resolve/reject 只发生一次，并清掉超时定时器
-      const finish = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        if (timer) clearTimeout(timer);
-        fn();
-      };
-
-      child.on('close', (code) => {
-        if (code === 0) {
-          finish(() => resolve());
-        } else {
-          finish(() => reject(new Error(lastStderr || `命令退出码: ${code}`)));
-        }
-      });
-
-      child.on('error', (err) => {
-        finish(() => reject(err));
-      });
-
-      // 10 分钟超时：先 SIGTERM，5 秒后仍未退出则 SIGKILL，避免子进程树残留
-      timer = setTimeout(
-        () => {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (!child.killed) child.kill('SIGKILL');
-          }, 5000).unref();
-          finish(() => reject(new Error('命令执行超时 (10 分钟)')));
-        },
-        10 * 60 * 1000,
-      );
-      timer.unref();
-      // 极快的命令可能在赋值前就已经 close
-      if (settled) clearTimeout(timer);
-    });
   }
 }

@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { BuildTasksController } from './build-tasks.controller';
 import { BuildTasksService } from './build-tasks.service';
+import { BuildNotifier } from './build-notifier.service';
+import { MiniprogramUploader } from './miniprogram-uploader.service';
+import { BuildRunner } from './build-runner.service';
 import { BuildJobProcessor } from './build-job.processor/build-job.processor';
 import { PrismaModule } from '../../../common/prisma/prisma.module';
 import { BullModule } from '@nestjs/bullmq';
@@ -28,7 +31,13 @@ import { ArtifactsModule } from '../artifacts/artifacts.module';
     }),
   ],
   controllers: [BuildTasksController],
-  providers: [BuildTasksService, BuildJobProcessor],
+  providers: [
+    BuildTasksService,
+    BuildJobProcessor,
+    BuildNotifier,
+    MiniprogramUploader,
+    BuildRunner,
+  ],
   exports: [BuildTasksService],
 })
 export class BuildTasksModule {}
