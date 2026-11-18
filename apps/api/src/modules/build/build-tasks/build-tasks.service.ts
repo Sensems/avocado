@@ -2,9 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import * as path from 'path';
+import * as fs from 'fs-extra';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { TriggerBuildDto } from './dto/trigger-build.dto';
 import { User, TaskStatus } from '@prisma/client';
@@ -183,33 +186,70 @@ export class BuildTasksService {
   }
 
   /**
+   * 读取构建日志全文。
+   * 日志文件存放在 var/logs（不在 public 下），必须经过此方法做权限校验，
+   * 否则可以按自增 taskId 遍历拿到所有项目的构建日志。
+   */
+  async readLog(taskId: string, user: User) {
+    if (!/^\d+$/.test(taskId)) {
+      throw new BadRequestException('非法的任务 ID');
+    }
+
+    const task = await this.prisma.buildTask.findUnique({
+      where: { id: BigInt(taskId) },
+      select: { projectId: true },
+    });
+    if (!task) throw new NotFoundException('任务不存在');
+
+    // 超管可读全部；普通用户必须是该项目成员
+    if (!user.isSuperAdmin) {
+      const member = await this.prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId: task.projectId, userId: user.id } },
+      });
+      if (!member) throw new ForbiddenException('无权访问该构建日志');
+    }
+
+    const logFile = path.join(process.cwd(), 'var', 'logs', `build-${taskId}.log`);
+    if (!(await fs.pathExists(logFile))) {
+      return { content: '', exists: false };
+    }
+
+    const content = await fs.readFile(logFile, 'utf-8');
+    return { content, exists: true };
+  }
+
+  /**
    * 取消等待中或正在运行的构建
    */
   async cancelTask(taskId: string) {
     const task = await this.prisma.buildTask.findUnique({ where: { id: BigInt(taskId) } });
     if (!task) throw new NotFoundException('任务不存在');
 
-    if (task.status === TaskStatus.success || task.status === TaskStatus.failed) {
+    if (
+      task.status === TaskStatus.success ||
+      task.status === TaskStatus.failed ||
+      task.status === TaskStatus.canceled
+    ) {
       throw new BadRequestException(`无法取消状态已经是 ${task.status} 的任务`);
     }
 
-    // 尝试从队列中移除（如果尚未开始）
+    // 尚未开始的任务直接从队列移除；已激活的交给 worker 在下一个检查点自行中止
     const job = await this.buildQueue.getJob(`build-${task.id.toString()}`);
     if (job && (await job.isActive()) === false) {
       await job.remove();
     }
 
-    // 更新数据库状态
+    // 标记为 canceled（而不是 failed），worker 检测到后会停止推进。
+    // 这里刻意不释放 robotId：由 worker 的 finally 统一归还，
+    // 两边都释放会导致同一编号被两个任务同时使用。
     const updated = await this.prisma.buildTask.update({
       where: { id: BigInt(taskId) },
-      data: { status: TaskStatus.failed, logPath: '构建被用户取消' },
+      data: {
+        status: TaskStatus.canceled,
+        // 仅作为「该任务存在日志」的标记，前端据此决定是否展示日志入口
+        logPath: `/storage/logs/build-${taskId}.log`,
+      },
     });
-
-    // 如果它绑定了机器人 ID，我们必须强制释放它
-    if (task.robotId) {
-      this.logger.log(`由于任务 ${task.id} 被取消，强制释放机器人 ID ${task.robotId}`);
-      await this.robotPoolService.releaseRobotId(task.robotId);
-    }
 
     return updated;
   }
@@ -221,24 +261,37 @@ export class BuildTasksService {
     const task = await this.prisma.buildTask.findUnique({ where: { id: BigInt(taskId) } });
     if (!task) throw new NotFoundException('任务不存在');
 
-    // 尝试从队列中移除（如果尚未开始）
+    // running 的任务不能直接删：worker 仍在执行，删掉记录后它无处回写状态，
+    // 也会让机器人池无法通过数据库反推哪些编号真正被占用
+    if (task.status === TaskStatus.running) {
+      throw new BadRequestException('任务正在运行，请先取消后再删除');
+    }
+
     const job = await this.buildQueue.getJob(`build-${task.id.toString()}`);
     if (job && (await job.isActive()) === false) {
       await job.remove();
     }
 
-    // 如果它绑定了机器人 ID，释放它
-    if (task.robotId) {
-      this.logger.log(`由于任务 ${task.id} 被删除，释放机器人 ID ${task.robotId}`);
-      await this.robotPoolService.releaseRobotId(task.robotId);
-    }
-
-    // 从数据库中删除
     await this.prisma.buildTask.delete({
       where: { id: BigInt(taskId) },
     });
 
+    // 顺带清理该任务产生的外围文件，避免磁盘无限增长
+    await this.cleanupTaskFiles(taskId);
+
     return { success: true };
+  }
+
+  /**
+   * 清理任务关联的日志与二维码文件
+   */
+  private async cleanupTaskFiles(taskId: string): Promise<void> {
+    const base = process.cwd();
+    const files = [
+      path.join(base, 'var', 'logs', `build-${taskId}.log`),
+      path.join(base, 'public', 'storage', `qrcode-${taskId}.jpg`),
+    ];
+    await Promise.all(files.map((f) => fs.remove(f).catch(() => {})));
   }
 
   /**

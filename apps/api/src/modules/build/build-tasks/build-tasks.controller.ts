@@ -7,15 +7,10 @@ import {
   UseGuards,
   Request,
   Query,
-  Sse,
   Headers,
   Delete,
 } from '@nestjs/common';
-import type { MessageEvent } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiHeader, ApiTags } from '@nestjs/swagger';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { fromEvent, Observable, timer } from 'rxjs';
-import { filter, map, takeUntil } from 'rxjs/operators';
 import { User } from '@prisma/client';
 import type { Request as ExpressRequest } from 'express';
 
@@ -25,18 +20,10 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ProjectGuard } from '../../../common/guards/project.guard';
 import { ApiResultResponse } from '../../../common/decorators/api-result.decorator';
 
-export interface BuildLogPayload {
-  taskId: string;
-  logChunk: string;
-}
-
 @ApiTags('Build Tasks')
 @Controller('build-tasks')
 export class BuildTasksController {
-  constructor(
-    private readonly buildTasksService: BuildTasksService,
-    private readonly eventEmitter: EventEmitter2,
-  ) {}
+  constructor(private readonly buildTasksService: BuildTasksService) {}
 
   // ----------------------------------------------------
   // 认证的 UI 接口
@@ -51,33 +38,6 @@ export class BuildTasksController {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const user = (req as any).user as User;
     return this.buildTasksService.triggerBuild(dto, user);
-  }
-
-  /**
-   * SSE 实时日志流端点
-   * 客户端通过 EventSource 连接此接口，实时接收构建日志
-   * 30 分钟后自动断开（防止连接无限挂起）
-   */
-  @Sse(':taskId/logs')
-  @ApiOperation({ summary: '通过 SSE 实时查看构建日志（无需 WebSocket）' })
-  @ApiResultResponse()
-  streamLogs(@Param('taskId') taskId: string): Observable<MessageEvent> {
-    const timeout$ = timer(30 * 60 * 1000); // 30 分钟超时
-
-    return fromEvent<BuildLogPayload>(this.eventEmitter, 'build.log').pipe(
-      filter((payload) => payload.taskId === taskId),
-      map(
-        (payload) =>
-          ({
-            data: {
-              taskId: payload.taskId,
-              log: payload.logChunk,
-              timestamp: new Date().toISOString(),
-            },
-          }) as MessageEvent,
-      ),
-      takeUntil(timeout$),
-    );
   }
 
   @Get('project/:projectId')
@@ -95,6 +55,17 @@ export class BuildTasksController {
     const pageNumber = page ? parseInt(page, 10) : 1;
     const limitNumber = limit ? parseInt(limit, 10) : 20;
     return this.buildTasksService.getTasksByProject(projectId, pageNumber, limitNumber);
+  }
+
+  @Get(':taskId/log')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: '读取构建日志全文（需项目成员权限）' })
+  @ApiResultResponse()
+  readLog(@Param('taskId') taskId: string, @Request() req: ExpressRequest) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const user = (req as any).user as User;
+    return this.buildTasksService.readLog(taskId, user);
   }
 
   @Post(':taskId/cancel')

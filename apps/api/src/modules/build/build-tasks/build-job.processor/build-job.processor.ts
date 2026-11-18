@@ -26,9 +26,24 @@ import AdmZip from 'adm-zip';
 // @ts-ignore
 import * as ci from 'miniprogram-ci';
 
+/** 用户取消任务时抛出的内部信号：跳过后续步骤，且不算构建失败 */
+class TaskCanceledError extends Error {
+  constructor() {
+    super('TASK_CANCELED');
+    this.name = 'TaskCanceledError';
+  }
+}
+
 @Processor(BUILD_QUEUE_NAME)
 export class BuildJobProcessor extends WorkerHost {
   private readonly logger = new Logger(BuildJobProcessor.name);
+
+  /**
+   * 构建日志目录。
+   * 刻意不放在 public 下——日志包含仓库地址、分支、依赖安装输出等敏感信息，
+   * 直接静态暴露时可被按自增 taskId 遍历，必须通过鉴权接口读取。
+   */
+  private readonly logDir = path.join(process.cwd(), 'var', 'logs');
 
   constructor(
     private readonly prisma: PrismaService,
@@ -53,15 +68,17 @@ export class BuildJobProcessor extends WorkerHost {
       `[Job ${job.id ?? 'unknown'}] 为任务 ID 开始构建执行: ${taskId} (项目: ${projectId})`,
     );
 
-    // 1. 在数据库中再次检查任务状态（可能已被取消）
+    // 1. 幂等保护：只有 pending 任务才允许执行。
+    //    BullMQ 是 at-least-once，重投时任务可能已是 running / success / canceled，
+    //    必须在这里短路，否则会重复上传微信、重复发通知。
     const task = await this.prisma.buildTask.findUnique({ where: { id: BigInt(taskId) } });
     if (!task) {
       this.logger.warn(`在数据库中找不到任务 ${taskId}，跳过该任务。`);
       return;
     }
 
-    if (task.status === TaskStatus.canceled || task.status === TaskStatus.failed) {
-      this.logger.warn(`任务 ${taskId} 已经是 ${task.status} 状态。中止。`);
+    if (task.status !== TaskStatus.pending) {
+      this.logger.warn(`任务 ${taskId} 当前状态为 ${task.status}，非 pending，跳过执行。`);
       return;
     }
 
@@ -95,20 +112,24 @@ export class BuildJobProcessor extends WorkerHost {
     this.logger.log(`[Job ${job.id ?? 'unknown'}] 为任务 ${taskId} 获取了机器人 ID: ${robotId}`);
 
     try {
-      // 4. 将任务标记为 RUNNING(运行中) 并分配机器人 ID
-      await this.prisma.buildTask.update({
-        where: { id: BigInt(taskId) },
+      // 4. 乐观锁抢占：把 pending 改成 running。
+      //    count === 0 说明已被别的 worker 接管（或已被取消），直接放弃，finally 会归还 robot。
+      const claimed = await this.prisma.buildTask.updateMany({
+        where: { id: BigInt(taskId), status: TaskStatus.pending },
         data: { status: TaskStatus.running, robotId: robotId },
       });
+      if (claimed.count === 0) {
+        this.logger.warn(`任务 ${taskId} 已被其他 worker 抢占或已取消，放弃执行。`);
+        return;
+      }
 
       // 5. 构建执行逻辑
       this.logger.log(
         `[Job ${job.id ?? 'unknown'}] 正在对分支进行克隆和构建: ${branch}, 版本: ${version ?? 'N/A'}...`,
       );
 
-      const logDir = path.join(process.cwd(), 'public', 'storage', 'logs');
-      const logDest = path.join(logDir, `build-${taskId}.log`);
-      await fs.ensureDir(logDir);
+      const logDest = path.join(this.logDir, `build-${taskId}.log`);
+      await fs.ensureDir(this.logDir);
       await fs.remove(logDest).catch(() => {});
 
       this.emitLog(taskId, `开始构建分支 ${branch}...`);
@@ -137,6 +158,7 @@ export class BuildJobProcessor extends WorkerHost {
       await fs.emptyDir(workspaceDir);
 
       try {
+        await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[1/4] 正在克隆仓库 ${project.repoUrl}...`);
 
         // 构建 git 认证上下文（支持私有仓库 SSH / HTTPS PAT / 密码）
@@ -162,8 +184,10 @@ export class BuildJobProcessor extends WorkerHost {
 
         try {
           // git clone 使用认证上下文（私有仓库需要凭证，公开仓库无凭证也可）
-          await this.runCommand(
-            `git ${gitAuth.extraArgs} clone --depth 50 -b ${branch} ${project.repoUrl} .`,
+          this.assertSafeBranch(branch);
+          await this.runExec(
+            'git',
+            [...gitAuth.extraArgs, 'clone', '--depth', '50', '-b', branch, project.repoUrl, '.'],
             workspaceDir,
             taskId,
             gitAuth.env,
@@ -178,25 +202,27 @@ export class BuildJobProcessor extends WorkerHost {
         if (await fs.pathExists(path.join(workspaceDir, 'package.json'))) {
           const installCmd = await this.detectInstallCommand(workspaceDir);
           this.emitLog(taskId, `使用命令: ${installCmd}`);
-          await this.runCommand(installCmd, workspaceDir, taskId);
+          await this.runShell(installCmd, workspaceDir, taskId);
           this.emitLog(taskId, `依赖安装完成。`);
         } else {
           this.emitLog(taskId, `未找到 package.json，跳过依赖安装。`);
         }
 
+        await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[3/4] 运行构建命令（如果有的话）...`);
         if (project.framework === 'uniapp') {
           if (!project.buildCommand) {
             throw new Error('UniApp 项目需要构建命令 (例如 npm run build:mp-weixin)');
           }
           this.emitLog(taskId, `执行 UniApp 构建命令: ${project.buildCommand}`);
-          await this.runCommand(project.buildCommand, workspaceDir, taskId);
+          await this.runShell(project.buildCommand, workspaceDir, taskId);
           this.emitLog(taskId, `构建命令完成。`);
         } else if (project.buildCommand) {
-          await this.runCommand(project.buildCommand, workspaceDir, taskId);
+          await this.runShell(project.buildCommand, workspaceDir, taskId);
           this.emitLog(taskId, `构建命令完成。`);
         }
 
+        await this.assertNotCanceled(taskId);
         this.emitLog(taskId, `[4/4] 正在通过 miniprogram-ci 上传到微信...`);
         const appId = project.appId;
         if (!appId) {
@@ -243,6 +269,7 @@ export class BuildJobProcessor extends WorkerHost {
             version: version || '1.0.0',
             desc: desc || '自动化的 CI 构建',
             setting: { es6: true, minify: true },
+            robot: robotId,
             onProgressUpdate: (task: any) => {
               this.emitLog(taskId, `[CI] ${JSON.stringify(task)}...`);
             },
@@ -258,6 +285,7 @@ export class BuildJobProcessor extends WorkerHost {
             version: version || '1.0.0',
             desc: desc || '自动化的 CI 构建',
             setting: { es6: true, minify: true },
+            robot: robotId,
             qrcodeFormat: 'image',
             qrcodeOutputDest: qrcodeDest,
             onProgressUpdate: (task: any) => {
@@ -322,8 +350,9 @@ export class BuildJobProcessor extends WorkerHost {
         this.logger.log(`[Job ${job.id ?? 'unknown'}] 构建成功完成！`);
         this.emitLog(taskId, `流程完全结束。正在验证产物...`);
 
-        await this.prisma.buildTask.update({
-          where: { id: BigInt(taskId) },
+        // 只在仍为 running 时写入成功，防止把用户已取消的任务覆盖成 success
+        await this.prisma.buildTask.updateMany({
+          where: { id: BigInt(taskId), status: TaskStatus.running },
           data: {
             status: TaskStatus.success,
             qrcodePath: `/storage/${qrcodeFileName}`,
@@ -357,6 +386,13 @@ export class BuildJobProcessor extends WorkerHost {
         throw new Error(`执行失败: ${detail}`);
       }
     } catch (error) {
+      // 用户主动取消不是失败，不要走 markFailed，也不要发失败通知
+      if (error instanceof TaskCanceledError) {
+        this.emitLog(taskId, '任务已被用户取消，停止执行。');
+        this.logger.warn(`[Job ${job.id ?? 'unknown'}] 任务 ${taskId} 已被取消，停止执行`);
+        return;
+      }
+
       const err = error as Error;
       this.logger.error(`[Job ${job.id ?? 'unknown'}] 构建失败: ${err.message}`);
       this.emitLog(taskId, `[ERROR] 构建失败: ${err.message}`);
@@ -415,8 +451,7 @@ export class BuildJobProcessor extends WorkerHost {
       throw new Error('没有可用的机器人，排队等待重试');
     }
 
-    const logDir = path.join(process.cwd(), 'public', 'storage', 'logs');
-    await fs.ensureDir(logDir);
+    await fs.ensureDir(this.logDir);
 
     try {
       await this.prisma.buildTask.update({
@@ -483,6 +518,7 @@ export class BuildJobProcessor extends WorkerHost {
         version: version || '1.0.0',
         desc: desc || '历史版本快速上传',
         setting: { es6: true, minify: true },
+        robot: robotId,
         onProgressUpdate: (t: any) => {
           this.emitLog(taskId, `[CI] ${JSON.stringify(t)}...`);
         },
@@ -499,6 +535,7 @@ export class BuildJobProcessor extends WorkerHost {
         version: version || '1.0.0',
         desc: desc || '历史版本快速上传',
         setting: { es6: true, minify: true },
+        robot: robotId,
         qrcodeFormat: 'image',
         qrcodeOutputDest: qrcodeDest,
         onProgressUpdate: (t: any) => {
@@ -553,20 +590,42 @@ export class BuildJobProcessor extends WorkerHost {
     }
   }
 
-  private async markFailed(taskId: string, reason: string) {
-    await this.prisma.buildTask.update({
+  /**
+   * 关键节点校验任务是否已被用户取消。
+   * 取消无法中断已发出的 ci.upload，但可以阻止后续步骤继续推进。
+   */
+  private async assertNotCanceled(taskId: string): Promise<void> {
+    const current = await this.prisma.buildTask.findUnique({
       where: { id: BigInt(taskId) },
+      select: { status: true },
+    });
+    if (current?.status === TaskStatus.canceled) {
+      throw new TaskCanceledError();
+    }
+  }
+
+  private async markFailed(taskId: string, reason: string) {
+    this.emitLog(taskId, `[SYSTEM ERROR] ${reason}`);
+    // 只在 pending/running 时标记失败，避免把用户已取消的任务覆盖成 failed
+    await this.prisma.buildTask.updateMany({
+      where: {
+        id: BigInt(taskId),
+        status: { in: [TaskStatus.pending, TaskStatus.running] },
+      },
       data: {
         status: TaskStatus.failed,
-        logPath: `/storage/logs/build-${taskId}.log\n[SYSTEM ERROR]: ${reason}`,
+        logPath: `/storage/logs/build-${taskId}.log`,
       },
     });
   }
 
   private emitLog(taskId: string, chunk: string) {
     this.eventEmitter.emit('build.log', { taskId, logChunk: chunk });
-    const logDest = path.join(process.cwd(), 'public', 'storage', 'logs', `build-${taskId}.log`);
-    fs.appendFile(logDest, chunk + '\n').catch(() => {});
+    const logDest = path.join(this.logDir, `build-${taskId}.log`);
+    // 目录可能在任务刚开始时还不在，这里自行保证
+    fs.ensureDir(this.logDir)
+      .then(() => fs.appendFile(logDest, chunk + '\n'))
+      .catch(() => {});
   }
 
   private async notifyRobots(
@@ -582,21 +641,24 @@ export class BuildJobProcessor extends WorkerHost {
       where: { id: { in: robotIds } },
     });
 
-    for (const robot of robots) {
-      try {
-        const { finalUrl, payload } = this.imRobotsService.buildWebhookMessage(
-          robot,
-          title,
-          content,
-          linkUrl,
-          imageUrl,
-        );
+    // 并发发送 + 单条超时：任何一个 IM webhook 挂住都不能拖住整条构建流程
+    await Promise.allSettled(
+      robots.map(async (robot) => {
+        try {
+          const { finalUrl, payload } = this.imRobotsService.buildWebhookMessage(
+            robot,
+            title,
+            content,
+            linkUrl,
+            imageUrl,
+          );
 
-        await axios.post(finalUrl, payload);
-      } catch (error) {
-        this.logger.error(`Failed to notify robot ${robot.name}: ${(error as Error).message}`);
-      }
-    }
+          await axios.post(finalUrl, payload, { timeout: 5000 });
+        } catch (error) {
+          this.logger.error(`Failed to notify robot ${robot.name}: ${(error as Error).message}`);
+        }
+      }),
+    );
   }
 
   /**
@@ -635,23 +697,61 @@ export class BuildJobProcessor extends WorkerHost {
   }
 
   /**
-   * 使用 spawn 执行 shell 命令，实时流式推送 stdout/stderr 日志
-   * @param command  要执行的命令字符串
-   * @param cwd      工作目录
-   * @param taskId   构建任务 ID（用于日志推送）
-   * @param extraEnv 额外注入的环境变量（用于 git 认证等场景）
+   * 校验分支名，防止通过分支参数注入命令。
+   * webhook 的 payload 来自外部，这里是最后一道防线。
    */
-  private runCommand(
+  private assertSafeBranch(branch: string): void {
+    if (!branch || !/^[A-Za-z0-9._/-]{1,200}$/.test(branch)) {
+      throw new Error(`非法的分支名: ${branch}`);
+    }
+  }
+
+  /**
+   * 执行用户配置的自由命令（依赖安装 / 构建）。
+   * 这类命令本质上就是 shell 脚本，必须走 shell，因此只允许受信任成员配置。
+   */
+  private runShell(
     command: string,
     cwd: string,
     taskId: string,
     extraEnv?: NodeJS.ProcessEnv,
   ): Promise<void> {
+    return this.spawnAndStream(command, [], cwd, taskId, { shell: true, env: extraEnv });
+  }
+
+  /**
+   * 执行固定命令 + 参数数组，不经过 shell，参数中的特殊字符不会被解释。
+   */
+  private runExec(
+    file: string,
+    args: string[],
+    cwd: string,
+    taskId: string,
+    extraEnv?: NodeJS.ProcessEnv,
+  ): Promise<void> {
+    return this.spawnAndStream(file, args, cwd, taskId, { shell: false, env: extraEnv });
+  }
+
+  /**
+   * spawn 子进程并实时流式推送 stdout/stderr 日志
+   * @param file     可执行文件（shell 模式下为完整命令字符串）
+   * @param args     参数数组（shell 模式下为空）
+   * @param cwd      工作目录
+   * @param taskId   构建任务 ID（用于日志推送）
+   * @param options  shell 开关与额外环境变量
+   */
+  private spawnAndStream(
+    file: string,
+    args: string[],
+    cwd: string,
+    taskId: string,
+    options: { shell: boolean; env?: NodeJS.ProcessEnv },
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, {
+      const child = spawn(file, args, {
         cwd,
-        shell: true,
-        env: { ...process.env, CI: 'true', ...extraEnv },
+        shell: options.shell,
+        env: { ...process.env, CI: 'true', ...options.env },
       });
 
       let lastStderr = '';
@@ -676,26 +776,43 @@ export class BuildJobProcessor extends WorkerHost {
         }
       });
 
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+
+      // 统一的收尾：保证 resolve/reject 只发生一次，并清掉超时定时器
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        fn();
+      };
+
       child.on('close', (code) => {
         if (code === 0) {
-          resolve();
+          finish(() => resolve());
         } else {
-          reject(new Error(lastStderr || `命令退出码: ${code}`));
+          finish(() => reject(new Error(lastStderr || `命令退出码: ${code}`)));
         }
       });
 
       child.on('error', (err) => {
-        reject(err);
+        finish(() => reject(err));
       });
 
-      // 10 分钟超时
-      setTimeout(
+      // 10 分钟超时：先 SIGTERM，5 秒后仍未退出则 SIGKILL，避免子进程树残留
+      timer = setTimeout(
         () => {
-          child.kill();
-          reject(new Error('命令执行超时 (10 分钟)'));
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (!child.killed) child.kill('SIGKILL');
+          }, 5000).unref();
+          finish(() => reject(new Error('命令执行超时 (10 分钟)')));
         },
         10 * 60 * 1000,
       );
+      timer.unref();
+      // 极快的命令可能在赋值前就已经 close
+      if (settled) clearTimeout(timer);
     });
   }
 }

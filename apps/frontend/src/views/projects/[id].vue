@@ -121,7 +121,7 @@ const copyWebhookUrl = () => {
     navigator.clipboard.writeText(url).then(() => {
         message.success(t('projectDetail.settings.copySuccess'))
     }).catch(() => {
-        message.error('复制失败，请手动选择复制')
+        message.error(t('projectDetail.settings.copyFailed'))
     })
 }
 
@@ -234,9 +234,7 @@ const handleDownload = (row: BuildTaskDto) => {
 }
 
 const downloadFile = (storagePath: string, filename: string) => {
-    console.log("🚀 ~ downloadFile ~ storagePath:", storagePath)
     const url = resolveStorageUrl(storagePath)
-    console.log("🚀 ~ downloadFile ~ url:", url)
     const a = document.createElement('a')
     a.href = url
     a.download = filename
@@ -244,6 +242,38 @@ const downloadFile = (storagePath: string, filename: string) => {
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
+}
+
+/** 构建日志存放在 var/logs（不在 public 下），需经鉴权接口取回内容后在前端落盘 */
+const downloadLog = async (taskId: string | number, version?: string) => {
+    try {
+        const token = localStorage.getItem('avocado-token')
+        const apiBase = import.meta.env.VITE_API_BASE_URL || '/api'
+        const res = await fetch(`${apiBase}/build-tasks/${taskId}/log`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        })
+        if (!res.ok) {
+            message.error(t('projectDetail.download.logFailed'))
+            return
+        }
+        const payload = await res.json()
+        const text: string = payload?.data?.content ?? ''
+        if (!text.trim()) {
+            message.warning(t('projectDetail.download.logEmpty'))
+            return
+        }
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `build-log-${version ?? taskId}.log`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    } catch {
+        message.error(t('projectDetail.download.logFailed'))
+    }
 }
 
 const handleTriggerBuild = async () => {
@@ -649,12 +679,12 @@ const memberColumns = computed(() => [
                             </n-form-item>
                             <n-form-item :label="t('projectDetail.settings.framework')">
                                 <n-select v-model:value="project.framework" class="w-full" :options="[
-                                    { label: '原生小程序', value: 'native' },
+                                    { label: t('projectDetail.settings.frameworkNative'), value: 'native' },
                                     { label: 'UniApp', value: 'uniapp' },
                                 ]" />
                             </n-form-item>
                             <n-form-item :label="t('projectDetail.settings.appId')">
-                                <n-input v-model:value="project.appId" placeholder="wx1234567890abcdef（微信小程序 AppID）" />
+                                <n-input v-model:value="project.appId" :placeholder="t('projectDetail.settings.appIdPlaceholder')" />
                             </n-form-item>
 
                             <n-divider class="my-4" />
@@ -782,7 +812,7 @@ const memberColumns = computed(() => [
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M5 13l4 4L19 7"></path>
                                         </svg>
-                                        已有上传的密钥文件
+                                        {{ t('projectDetail.settings.hasUploadedKey') }}
                                     </span>
                                 </template>
                             </n-form-item>
@@ -793,7 +823,7 @@ const memberColumns = computed(() => [
                                         :placeholder="t('projectDetail.settings.gitCredentialPlaceholder')" clearable
                                         class="flex-1"
                                         :options="credentials.map(c => ({ label: c.name, value: c.id }))" />
-                                    <n-button tag="a" href="/admin/credentials" target="_blank" title="前往凭证管理页面">
+                                    <n-button tag="a" href="/admin/credentials" target="_blank" :title="t('projectDetail.settings.goToCredentialsPage')">
                                         <template #icon>
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -808,7 +838,7 @@ const memberColumns = computed(() => [
                                     <n-select v-model:value="project.imRobotIds" multiple
                                         :placeholder="t('projectDetail.settings.imRobotsPlaceholder')" class="flex-1"
                                         :options="robots.map(r => ({ label: r.name, value: r.id }))" />
-                                    <n-button tag="a" href="/admin/robots" target="_blank" title="前往机器人管理页面">
+                                    <n-button tag="a" href="/admin/robots" target="_blank" :title="t('projectDetail.settings.goToRobotsPage')">
                                         <template #icon>
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -918,7 +948,7 @@ const memberColumns = computed(() => [
                             </div>
                         </div>
                         <n-button size="small" dashed
-                            @click="downloadFile(downloadTask!.logPath!, `build-log-${downloadTask!.version}.log`)">
+                            @click="downloadLog(downloadTask!.id, downloadTask!.version)">
                             {{ t('projectDetail.download.downloadBtn') }}
                         </n-button>
                     </div>

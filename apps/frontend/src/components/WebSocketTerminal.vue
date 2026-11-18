@@ -43,25 +43,31 @@ const initTerminal = () => {
     term.open(terminalContainer.value)
 }
 
-/** 历史日志模式：直接 HTTP 拉取日志文件并渲染 */
-const loadHistoryLog = async (logPath: string) => {
+/**
+ * 历史日志模式：通过鉴权接口拉取日志内容。
+ * 日志文件存放在 var/logs（不在 public 下），不能再用静态路径直连，
+ * 否则可以按自增 taskId 遍历拿到所有项目的构建日志。
+ */
+const loadHistoryLog = async (taskId: string) => {
     term?.writeln('\x1b[35m[System]\x1b[0m Loading build log...')
     try {
-        const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/api$/, '')
-        const url = `${base}${logPath}`
-        const res = await fetch(url)
+        const token = localStorage.getItem('avocado-token')
+        const apiBase = import.meta.env.VITE_API_BASE_URL || '/api'
+        const res = await fetch(`${apiBase}/build-tasks/${taskId}/log`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        })
         if (!res.ok) {
             term?.writeln(`\x1b[31m[System]\x1b[0m Failed to load log (HTTP ${res.status}).`)
             return
         }
-        const text = await res.text()
-        if (!text.trim()) {
-            term?.writeln('\x1b[33m[System]\x1b[0m Log file is empty.')
+        const payload = await res.json()
+        const text: string = payload?.data?.content ?? ''
+        if (!payload?.data?.exists || !text.trim()) {
+            term?.writeln('\x1b[33m[System]\x1b[0m Log file is empty or not found.')
             return
         }
         // 按行写入终端，保留 ANSI 色彩码
-        const lines = text.split(/\r?\n/)
-        for (const line of lines) {
+        for (const line of text.split(/\r?\n/)) {
             term?.writeln(line)
         }
         term?.writeln('\x1b[32m[System]\x1b[0m ─── End of log ───')
@@ -114,8 +120,8 @@ const startSession = () => {
     const isRunning = props.status === 'running' || props.status === 'pending'
     const hasLogPath = !!props.logPath
 
-    if (hasLogPath && !isRunning) {
-        loadHistoryLog(props.logPath!)
+    if (hasLogPath && !isRunning && props.taskId) {
+        loadHistoryLog(props.taskId)
     } else {
         term?.writeln('\x1b[35m[System]\x1b[0m Waiting for build task to start...')
         connectWebSocket()

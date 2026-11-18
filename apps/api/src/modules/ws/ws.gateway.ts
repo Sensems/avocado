@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { OnEvent } from '@nestjs/event-emitter';
 
 @WebSocketGateway({
@@ -22,25 +23,34 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(WsGateway.name);
 
-  constructor(/* private readonly authService: AuthService */) {}
+  constructor(private readonly jwtService: JwtService) {}
 
-  // Remove handleConnection async if we don't await anything, or just use it synchronously
-  handleConnection(client: Socket) {
-    // Basic JWT check placeholder
-    // In production, decode JWT and disconnect if invalid
-    const token = client.handshake.query.token as string | undefined;
+  /**
+   * 握手阶段校验 JWT。
+   * 前端通过 io(url, { auth: { token } }) 传入，同时兼容旧的 query 传参。
+   * 校验失败立即断开，避免未授权客户端订阅任意构建日志。
+   */
+  async handleConnection(client: Socket) {
+    const token =
+      (client.handshake.auth?.token as string | undefined) ??
+      (client.handshake.query?.token as string | undefined);
 
-    if (token) {
-      try {
-        // e.g: this.authService.verify(token);
-        this.logger.log(`Client connected with token: ${client.id}`);
-      } catch {
-        // Drop connection
-        this.logger.warn('Invalid token, disconnecting client');
-        client.disconnect();
-      }
-    } else {
-      this.logger.log(`Client connected: ${client.id}`);
+    if (!token) {
+      this.logger.warn(`拒绝未携带 token 的连接: ${client.id}`);
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub?: string; username?: string }>(token);
+      client.data.userId = payload.sub;
+      client.data.username = payload.username;
+      this.logger.log(
+        `客户端 ${client.id} 已认证: ${payload.username ?? payload.sub ?? 'unknown'}`,
+      );
+    } catch {
+      this.logger.warn(`拒绝非法 token 的连接: ${client.id}`);
+      client.disconnect(true);
     }
   }
 

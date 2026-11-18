@@ -20,52 +20,60 @@ export class ProjectCoreService {
   ) {}
 
   async create(createDto: CreateProjectDto, user: User, file?: Express.Multer.File) {
-    // 检查项目名称是否存在
+    // 先做一次友好检查；并发场景下真正兜底的是数据库唯一约束
     const existing = await this.prisma.project.findFirst({ where: { name: createDto.name } });
     if (existing) {
       throw new ConflictException('项目名称已存在');
     }
 
-    return await this.prisma.$transaction(async (tx) => {
-      // 创建项目
-      // 用户要求：新建项目时自动生成 webhookSecret
-      const generatedWebhookSecret = randomBytes(16).toString('hex');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // 创建项目
+        // 用户要求：新建项目时自动生成 webhookSecret
+        const generatedWebhookSecret = randomBytes(16).toString('hex');
 
-      const project = await tx.project.create({
-        data: {
-          name: createDto.name,
-          appId: createDto.appId ?? null,
-          repoUrl: createDto.repositoryUrl,
-          gitCredentialId: createDto.gitCredentialId as string,
-          imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
-          framework: createDto.framework ?? FrameworkType.native,
-          webhookSecret: generatedWebhookSecret,
-        },
-      });
-
-      // 若上传了密钥文件，保存到磁盘并更新记录
-      if (file) {
-        await fs.mkdir(this.privateKeysDir, { recursive: true });
-        const keyFilePath = path.join(this.privateKeysDir, `${project.id}.key`);
-        await fs.writeFile(keyFilePath, file.buffer);
-
-        await tx.project.update({
-          where: { id: project.id },
-          data: { privateKeyPath: keyFilePath },
+        const project = await tx.project.create({
+          data: {
+            name: createDto.name,
+            appId: createDto.appId ?? null,
+            repoUrl: createDto.repositoryUrl,
+            gitCredentialId: createDto.gitCredentialId as string,
+            imRobotIds: createDto.imRobotIds ? createDto.imRobotIds : Prisma.DbNull,
+            framework: createDto.framework ?? FrameworkType.native,
+            webhookSecret: generatedWebhookSecret,
+          },
         });
-      }
 
-      // 将创建者指定为维护者
-      await tx.projectMember.create({
-        data: {
-          projectId: project.id,
-          userId: user.id,
-          role: ProjectRole.maintainer,
-        },
+        // 若上传了密钥文件，保存到磁盘并更新记录
+        if (file) {
+          await fs.mkdir(this.privateKeysDir, { recursive: true });
+          const keyFilePath = path.join(this.privateKeysDir, `${project.id}.key`);
+          await fs.writeFile(keyFilePath, file.buffer);
+
+          await tx.project.update({
+            where: { id: project.id },
+            data: { privateKeyPath: keyFilePath },
+          });
+        }
+
+        // 将创建者指定为维护者
+        await tx.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId: user.id,
+            role: ProjectRole.maintainer,
+          },
+        });
+
+        return project;
       });
-
-      return project;
-    });
+    } catch (e: unknown) {
+      // P2002 = 唯一约束冲突（两个请求同时通过上面的 findFirst 检查时由 DB 兜底）
+      if (typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002') {
+        throw new ConflictException('项目名称已存在');
+      }
+      throw e;
+    }
   }
 
   async findAll(user: User, page: number = 1, limit: number = 15) {

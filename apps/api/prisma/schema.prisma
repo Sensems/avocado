@@ -90,6 +90,7 @@ model Project {
   members    ProjectMember[]
   buildTasks BuildTask[]
 
+  @@unique([name])
   @@map("projects")
 }
 
@@ -106,6 +107,7 @@ model ProjectMember {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, userId])
+  @@index([userId])
   @@map("project_members")
 }
 
@@ -161,6 +163,10 @@ model BuildTask {
   triggerUserId String @map("trigger_user_id") @db.Uuid
   triggerUser   User   @relation(fields: [triggerUserId], references: [id])
 
+  // 列表按项目 + 时间倒序查询，以及按状态捞活跃任务
+  @@index([projectId, createdAt])
+  @@index([status])
+  @@index([triggerUserId])
   @@map("build_tasks")
 }
 
@@ -175,5 +181,7 @@ model AuditLog {
   userId String @map("user_id") @db.Uuid
   user   User   @relation(fields: [userId], references: [id])
 
+  @@index([createdAt])
+  @@index([userId])
   @@map("audit_logs")
 }

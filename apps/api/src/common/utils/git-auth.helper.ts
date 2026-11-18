@@ -1,17 +1,20 @@
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { GitCredentialType } from '@prisma/client';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface GitAuthContext {
   /** 注入到子进程的额外环境变量 */
   env: NodeJS.ProcessEnv;
-  /** 需要插入到 `git` 命令之后、子命令之前的 -c 参数字符串，可能为空 */
-  extraArgs: string;
+  /**
+   * 需要插入到 `git` 之后、子命令之前的额外参数。
+   * 使用数组而非字符串，配合 execFile 调用可完全避开 shell 解析，杜绝命令注入。
+   */
+  extraArgs: string[];
   /** 用完后必须调用的清理函数，删除临时文件 */
   cleanup: () => Promise<void>;
 }
@@ -30,14 +33,9 @@ export interface GitCredentialInfo {
  * - HTTPS 凭证：写入临时 git-credentials store 文件并用 -c credential.helper 注入
  *   同时兼容 PAT（个人访问令牌）、普通密码，以及 GitHub/GitLab/Gitee 多平台
  *
- * @example
+ * 调用方必须使用 execFile 而非 shell 字符串拼接：
  * ```ts
- * const ctx = await buildGitAuthContext(credential, repoUrl);
- * try {
- *   await execAsync(`git ${ctx.extraArgs} clone ${repoUrl} .`, { env: ctx.env });
- * } finally {
- *   await ctx.cleanup();
- * }
+ * await execFileAsync('git', [...ctx.extraArgs, 'clone', repoUrl, '.'], { env: ctx.env });
  * ```
  */
 export async function buildGitAuthContext(
@@ -50,7 +48,7 @@ export async function buildGitAuthContext(
     // 关闭交互式提示，避免 git 挂起等待用户输入
     GIT_TERMINAL_PROMPT: '0',
   };
-  let extraArgs = '';
+  let extraArgs: string[] = [];
 
   if (credential.type === GitCredentialType.ssh) {
     // ── SSH 认证 ────────────────────────────────────────────────────────────
@@ -84,7 +82,7 @@ export async function buildGitAuthContext(
 
     // Windows 路径转正斜杠（git 底层用 POSIX 路径）
     const gitCredFilePath = credFilePath.replace(/\\/g, '/');
-    extraArgs = `-c credential.helper="store --file '${gitCredFilePath}'"`;
+    extraArgs = ['-c', `credential.helper=store --file '${gitCredFilePath}'`];
   }
 
   const cleanup = async () => {
@@ -100,24 +98,26 @@ export async function buildGitAuthContext(
 export function buildNoAuthContext(): GitAuthContext {
   return {
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-    extraArgs: '',
+    extraArgs: [],
     cleanup: async () => {},
   };
 }
 
 /**
- * 通过 git ls-remote --heads 获取仓库分支列表，使用传入的认证上下文
+ * 通过 git ls-remote --heads 获取仓库分支列表，使用传入的认证上下文。
+ * 使用 execFile + 参数数组，仓库地址不经过 shell 解析。
  */
 export async function listBranchesWithContext(
   repoUrl: string,
   ctx: GitAuthContext,
 ): Promise<string[]> {
-  const { stdout } = await execAsync(`git ${ctx.extraArgs} ls-remote --heads "${repoUrl}"`, {
-    env: ctx.env,
-    timeout: 30_000,
-  });
+  const { stdout } = await execFileAsync(
+    'git',
+    [...ctx.extraArgs, 'ls-remote', '--heads', repoUrl],
+    { env: ctx.env, timeout: 30_000 },
+  );
 
-  return stdout
+  return String(stdout)
     .split('\n')
     .filter((line) => line.includes('refs/heads/'))
     .map((line) => line.split('refs/heads/')[1]?.trim())

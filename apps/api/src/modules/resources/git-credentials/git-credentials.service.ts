@@ -4,7 +4,7 @@ import { CreateGitCredentialDto } from './dto/create-git-credential.dto';
 import { UpdateGitCredentialDto } from './dto/update-git-credential.dto';
 import { encrypt, decrypt } from '../../../common/utils/crypto.util';
 import { User } from '@prisma/client';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
   buildGitAuthContext,
@@ -12,7 +12,7 @@ import {
   listBranchesWithContext,
 } from '../../../common/utils/git-auth.helper';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 @Injectable()
 export class GitCredentialsService {
@@ -105,11 +105,11 @@ export class GitCredentialsService {
     );
 
     try {
-      const { stdout } = await execAsync(`git ${ctx.extraArgs} ls-remote ${testUrl}`, {
+      const { stdout } = await execFileAsync('git', [...ctx.extraArgs, 'ls-remote', testUrl], {
         env: ctx.env,
         timeout: 30_000,
       });
-      return { success: true, message: '连接成功', details: stdout.split('\n')[0] };
+      return { success: true, message: '连接成功', details: String(stdout).split('\n')[0] };
     } catch (error) {
       const msg = (error as Error).message ?? String(error);
       const sanitized = msg.replace(/https?:\/\/[^@\s]+@/g, 'https://***@');
