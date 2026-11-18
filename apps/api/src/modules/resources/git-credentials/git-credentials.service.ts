@@ -84,13 +84,20 @@ export class GitCredentialsService {
     if (!credential) throw new NotFoundException('凭证不存在');
 
     // 外键 RESTRICT：被项目引用的凭证不能物理删除，否则项目会悬空。
-    // 与其让数据库抛 P2003 变成 500，不如先查清楚，给一个能指导用户行动的提示。
-    const refCount = await this.prisma.project.count({
-      where: { gitCredentialId: id, deletedAt: null },
-    });
-    if (refCount > 0) {
+    // 注意：软删除的项目仍在数据库里保留着 git_credential_id 外键，
+    // 所以这里必须查「所有」项目（含 deletedAt 非空），不能只查有效项目，
+    // 否则会漏掉软删除项目的引用，走到 delete() 时被数据库拦下变成 500。
+    const [liveCount, deletedCount] = await Promise.all([
+      this.prisma.project.count({ where: { gitCredentialId: id, deletedAt: null } }),
+      this.prisma.project.count({ where: { gitCredentialId: id, deletedAt: { not: null } } }),
+    ]);
+
+    if (liveCount + deletedCount > 0) {
+      // 已删除项目无法在界面上解绑，给出可执行的指引
+      const deletedHint =
+        deletedCount > 0 ? `（其中 ${deletedCount} 个是已删除项目，需先彻底清理）` : '';
       throw new ConflictException(
-        `该凭证正被 ${refCount} 个项目使用，请先解绑这些项目再删除`,
+        `该凭证正被 ${liveCount + deletedCount} 个项目使用${deletedHint}，请先解绑这些项目再删除`,
       );
     }
 
