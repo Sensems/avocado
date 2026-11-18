@@ -32,7 +32,7 @@ export class ProjectCoreService {
         // 用户要求：新建项目时自动生成 webhookSecret
         const generatedWebhookSecret = randomBytes(16).toString('hex');
 
-        const project = await tx.project.create({
+        let project = await tx.project.create({
           data: {
             name: createDto.name,
             appId: createDto.appId ?? null,
@@ -40,6 +40,11 @@ export class ProjectCoreService {
             gitCredentialId: createDto.gitCredentialId as string,
             framework: createDto.framework ?? FrameworkType.native,
             webhookSecret: generatedWebhookSecret,
+            // 以下两项此前被遗漏：前端表单能填、DTO 能收，但创建时被静默丢弃，
+            // 导致「填了产物路径却不生效」，原生/uni-app 项目首次构建必然找不到目录
+            distPath: createDto.distPath ?? null,
+            buildCommand: createDto.buildCommand ?? null,
+            defaultBranch: createDto.defaultBranch ?? null,
           },
         });
 
@@ -49,7 +54,8 @@ export class ProjectCoreService {
           const keyFilePath = path.join(this.privateKeysDir, `${project.id}.key`);
           await fs.writeFile(keyFilePath, file.buffer);
 
-          await tx.project.update({
+          // 更新结果要回传给调用方，否则接口响应里 privateKeyPath 永远是 null
+          project = await tx.project.update({
             where: { id: project.id },
             data: { privateKeyPath: keyFilePath },
           });
@@ -178,22 +184,32 @@ export class ProjectCoreService {
       privateKeyPath = keyFilePath;
     }
 
+    const data: Record<string, unknown> = {
+      name: updateDto.name,
+      repoUrl: updateDto.repositoryUrl,
+      gitCredentialId: updateDto.gitCredentialId as string,
+      framework: updateDto.framework as FrameworkType,
+      distPath: updateDto.distPath,
+      buildCommand: updateDto.buildCommand,
+      retentionCount: updateDto.retentionCount,
+      webhookSecret: updateDto.webhookSecret,
+      historyEnabled: updateDto.historyEnabled,
+      privateKeyPath,
+    };
+
+    // appId / defaultBranch 不能用 `?? null` 直接写：
+    // 前端只改「构建命令」时不会带这两个字段，undefined 被转成 null 就会把已有配置清空。
+    // 只有显式传了值（哪怕是空串）才更新，未传则保持原值。
+    if (updateDto.appId !== undefined) {
+      data.appId = updateDto.appId || null;
+    }
+    if (updateDto.defaultBranch !== undefined) {
+      data.defaultBranch = updateDto.defaultBranch || null;
+    }
+
     const updated = await this.prisma.project.update({
       where: { id },
-      data: {
-        name: updateDto.name,
-        appId: updateDto.appId ?? null,
-        repoUrl: updateDto.repositoryUrl,
-        gitCredentialId: updateDto.gitCredentialId as string,
-        framework: updateDto.framework as FrameworkType,
-        distPath: updateDto.distPath,
-        buildCommand: updateDto.buildCommand,
-        defaultBranch: updateDto.defaultBranch ?? null,
-        retentionCount: updateDto.retentionCount,
-        webhookSecret: updateDto.webhookSecret,
-        historyEnabled: updateDto.historyEnabled,
-        privateKeyPath,
-      } as any,
+      data,
     });
 
     // 机器人关联采用「整体替换」语义：传了数组就重写，没传则保持不变

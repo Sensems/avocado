@@ -63,6 +63,15 @@ export class CreateProjectDto {
   distPath?: string;
 
   @ApiPropertyOptional({
+    description: '默认构建分支；Git Webhook 只对该分支的推送触发构建。不填则 webhook 默认按 main 处理',
+    example: 'master',
+  })
+  @IsString({ message: '默认分支必须是字符串' })
+  @IsOptional()
+  @MaxLength(100, { message: '默认分支不能超过100个字符' })
+  defaultBranch?: string;
+
+  @ApiPropertyOptional({
     description: '框架类型',
     enum: FrameworkType,
     default: FrameworkType.native,
