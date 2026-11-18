@@ -166,10 +166,10 @@ export class ArtifactsService {
         await this.prisma.buildTask.update({
           where: { id: task.id },
           data: {
+            // 只清空路径。logPath 存的是日志文件名，往里拼提示语会让它变成
+            // 「文件名 + 一段中文」，任何按路径使用它的地方都会坏掉。
+            // 「产物已被清理」这件事由上面的 logger 与构建日志本身承载。
             artifactPath: null,
-            logPath: task.logPath
-              ? task.logPath + '\n[SYSTEM] 产物因保留策略而被删除。'
-              : '[SYSTEM] 产物因保留策略而被删除。',
           },
         });
       }

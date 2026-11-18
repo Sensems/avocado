@@ -96,10 +96,8 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
     const robotId = await this.robotPoolService.acquireRobotId();
     if (robotId === null) {
       this.logger.warn(`[Job ${job.id ?? 'unknown'}] 没有可用的机器人 ID。延迟任务 ${taskId}。`);
-      await this.prisma.buildTask.update({
-        where: { id: BigInt(taskId) },
-        data: { logPath: '正在等待可用的机器人 ID...' },
-      });
+      // 等待提示走日志通道，不再塞进 logPath（那个字段只存日志文件名）
+      this.emitLog(taskId, '[SYSTEM] 暂无可用机器人，10 秒后自动重试');
       // 移回延迟队列，10 秒后重新调度。
       // 必须抛 DelayedError，BullMQ 才会把它当作「延迟」而不是「失败」，
       // 否则会消耗 attempts 并计入失败统计。
@@ -283,7 +281,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
           data: {
             status: TaskStatus.success,
             qrcodePath: `/storage/${qrcodeFileName}`,
-            logPath: `/storage/logs/build-${taskId}.log`,
+            logPath: `build-${taskId}.log`,
             packageSize,
             ...(savedArtifactPath ? { artifactPath: savedArtifactPath } : {}),
           } as any,
@@ -468,7 +466,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
         data: {
           status: TaskStatus.success,
           qrcodePath: `/storage/${qrcodeFileName}`,
-          logPath: `/storage/logs/build-${taskId}.log`,
+          logPath: `build-${taskId}.log`,
         },
       });
 
@@ -530,7 +528,7 @@ export class BuildJobProcessor extends WorkerHost implements OnApplicationBootst
       data: {
         status: TaskStatus.failed,
         failReason: reason.slice(0, 2000),
-        logPath: `/storage/logs/build-${taskId}.log`,
+        logPath: `build-${taskId}.log`,
       },
     });
   }
