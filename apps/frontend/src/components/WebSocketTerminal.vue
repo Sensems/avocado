@@ -15,6 +15,11 @@ const props = defineProps<{
      * 任务状态。running 时无论是否有 logPath，都走实时 WS。
      */
     status?: string
+    /**
+     * 体验版二维码的签名路径（如 /storage/qrcode-12.jpg?exp=...&sig=...）。
+     * 历史回看时 WS 已经不会重发 build_qrcode 事件，需要据此把二维码补出来。
+     */
+    qrcodePath?: string
 }>()
 
 const terminalContainer = ref<HTMLElement | null>(null)
@@ -23,6 +28,12 @@ const qrcodeDataUrl = ref<string>('')
 
 let term: Terminal | null = null
 let socket: Socket | null = null
+
+/** 把后端存储路径拼成可访问的完整 URL（签名参数原样保留） */
+const resolveStorageUrl = (storagePath: string): string => {
+    const base = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/api$/, '')
+    return `${base}${storagePath}`
+}
 
 const initTerminal = () => {
     if (!terminalContainer.value) return
@@ -48,8 +59,9 @@ const initTerminal = () => {
  * 日志文件存放在 var/logs（不在 public 下），不能再用静态路径直连，
  * 否则可以按自增 taskId 遍历拿到所有项目的构建日志。
  */
-const loadHistoryLog = async (taskId: string) => {
-    term?.writeln('\x1b[35m[System]\x1b[0m Loading build log...')
+const loadHistoryLog = async (taskId: string, opts: { silent?: boolean } = {}) => {
+    const silent = opts.silent === true
+    if (!silent) term?.writeln('\x1b[35m[System]\x1b[0m Loading build log...')
     try {
         const token = localStorage.getItem('avocado-token')
         const apiBase = import.meta.env.VITE_API_BASE_URL || '/api'
@@ -57,22 +69,30 @@ const loadHistoryLog = async (taskId: string) => {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
         })
         if (!res.ok) {
-            term?.writeln(`\x1b[31m[System]\x1b[0m Failed to load log (HTTP ${res.status}).`)
+            if (!silent) term?.writeln(`\x1b[31m[System]\x1b[0m Failed to load log (HTTP ${res.status}).`)
             return
         }
         const payload = await res.json()
         const text: string = payload?.data?.content ?? ''
         if (!payload?.data?.exists || !text.trim()) {
-            term?.writeln('\x1b[33m[System]\x1b[0m Log file is empty or not found.')
+            if (!silent) term?.writeln('\x1b[33m[System]\x1b[0m Log file is empty or not found.')
             return
         }
         // 按行写入终端，保留 ANSI 色彩码
         for (const line of text.split(/\r?\n/)) {
             term?.writeln(line)
         }
-        term?.writeln('\x1b[32m[System]\x1b[0m ─── End of log ───')
+        term?.writeln(
+            silent
+                ? '\x1b[32m[System]\x1b[0m ── 以上为此前日志，以下为实时输出 ──'
+                : '\x1b[32m[System]\x1b[0m ─── End of log ───'
+        )
+        // 历史回看：WS 不会再发 build_qrcode，用任务记录里的签名路径把二维码补出来
+        if (props.qrcodePath) {
+            qrcodeDataUrl.value = resolveStorageUrl(props.qrcodePath)
+        }
     } catch (e) {
-        term?.writeln(`\x1b[31m[System]\x1b[0m Error loading log: ${(e as Error).message}`)
+        if (!silent) term?.writeln(`\x1b[31m[System]\x1b[0m Error loading log: ${(e as Error).message}`)
     }
 }
 
@@ -113,19 +133,30 @@ const connectWebSocket = () => {
 
 /**
  * 根据 props 决定走哪种模式：
- * - status === 'running' 或没有 logPath → 实时 WS
- * - 有 logPath 且非 running → HTTP 历史回显
+ * - 已结束且有日志 → HTTP 历史回显
+ * - 运行中 → 先补一次已有日志，再接 WS 增量
+ *
+ * 补历史是必须的：构建进行到一半才打开终端时，之前输出的内容不会重发，
+ * 用户只能看到「Connected」和之后零星的几行，误以为日志没推送。
  */
-const startSession = () => {
+const startSession = async () => {
     const isRunning = props.status === 'running' || props.status === 'pending'
-    const hasLogPath = !!props.logPath
 
-    if (hasLogPath && !isRunning && props.taskId) {
-        loadHistoryLog(props.taskId)
-    } else {
-        term?.writeln('\x1b[35m[System]\x1b[0m Waiting for build task to start...')
-        connectWebSocket()
+    if (!isRunning) {
+        if (props.logPath && props.taskId) {
+            await loadHistoryLog(props.taskId)
+        } else {
+            term?.writeln('\x1b[35m[System]\x1b[0m Waiting for build task to start...')
+            connectWebSocket()
+        }
+        return
     }
+
+    // 运行中：先把此刻已有的日志补齐（还没有日志文件时静默跳过）
+    if (props.taskId) {
+        await loadHistoryLog(props.taskId, { silent: true })
+    }
+    connectWebSocket()
 }
 
 watch(

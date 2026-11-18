@@ -170,6 +170,22 @@ const frameworkDistOption = computed(() => {
     legend: {
       bottom: '5%',
       left: 'center',
+      // 环内 label 是关闭的（只有一个纯色环），如果不在这里给出占比，
+      // 用户完全看不出各类占多少。
+      // 注意：series.data 已经把 name 映射成了 i18n 文案，这里也必须按同样
+      // 的映射去反查原始数据，否则 name（中文）对不上 data[i].name（native）。
+      formatter: (name: string) => {
+        const rawName =
+          name === t('projects.framework.native')
+            ? 'native'
+            : name === t('projects.framework.uniapp')
+              ? 'uniapp'
+              : name
+        const total = data.reduce((sum, i) => sum + (i.value || 0), 0)
+        const item = data.find((i) => i.name === rawName)
+        if (!item || !total) return name
+        return `${name}  ${Math.round((item.value / total) * 100)}%`
+      },
       textStyle: { color: isDark.value ? '#94a3b8' : '#64748b' }
     },
     series: [
@@ -193,11 +209,21 @@ const frameworkDistOption = computed(() => {
           }
         },
         labelLine: { show: false },
-        data: data.map((i) => ({
-          value: i.value,
-          name: i.name,
-          itemStyle: { color: i.name === 'native' ? '#8b5cf6' : '#3b82f6' }
-        }))
+        data: data.map((i) => {
+          // 后端返回的是枚举值（native / uniapp），需要映射成 i18n 文案，
+          // 否则中文环境下图例仍是英文 "native"
+          const frameworkLabel =
+            i.name === 'native'
+              ? t('projects.framework.native')
+              : i.name === 'uniapp'
+                ? t('projects.framework.uniapp')
+                : i.name
+          return {
+            value: i.value,
+            name: frameworkLabel,
+            itemStyle: { color: i.name === 'native' ? '#8b5cf6' : '#3b82f6' }
+          }
+        })
       }
     ]
   }

@@ -16,7 +16,7 @@ import { useI18n } from 'vue-i18n'
 
 const message = useMessage()
 const dialog = useDialog()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const projectId = route.params.id as string
@@ -66,6 +66,7 @@ const logTaskId = ref('')
 const logTaskVersion = ref('')
 const logTaskLogPath = ref('')
 const logTaskStatus = ref('')
+const logTaskQrcodePath = ref('')
 
 // Download Drawer State
 const downloadDrawerOpen = ref(false)
@@ -219,6 +220,7 @@ const handleViewLog = (row: BuildTaskDto) => {
     logTaskVersion.value = row.version || row.id.substring(0, 8)
     logTaskLogPath.value = row.logPath ?? ''
     logTaskStatus.value = row.status
+    logTaskQrcodePath.value = row.qrcodePath ?? ''
     logDrawerOpen.value = true
 }
 
@@ -351,7 +353,9 @@ const handleDeleteTask = async (taskId: string, isArtifact = false) => {
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-'
     const d = new Date(dateStr)
-    return isNaN(d.getTime()) ? dateStr : new Intl.DateTimeFormat('zh-CN', {
+    if (isNaN(d.getTime())) return dateStr
+    // 跟随当前语言，否则英文界面里会出现「11月18日 17:53」
+    return new Intl.DateTimeFormat(locale.value || 'zh-CN', {
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(d)
 }
@@ -734,6 +738,14 @@ const memberColumns = computed(() => [
                             <n-form-item :label="t('projectDetail.settings.distPath')">
                                 <n-input v-model:value="project.distPath" placeholder="e.g. dist/build/mp-weixin" />
                             </n-form-item>
+                            <n-form-item :label="t('projects.form.defaultBranch')">
+                                <n-input v-model:value="project.defaultBranch"
+                                    :placeholder="t('projects.form.defaultBranchPlaceholder')" />
+                                <template #feedback>
+                                    <span class="text-xs text-zinc-500">{{
+                                        t('projects.form.defaultBranchHint') }}</span>
+                                </template>
+                            </n-form-item>
                             <n-form-item :label="t('projectDetail.settings.retentionCount')">
                                 <n-input-number v-model:value="project.retentionCount" :min="1" :max="10"
                                     placeholder="10" class="w-full" />
@@ -918,7 +930,7 @@ const memberColumns = computed(() => [
         <n-drawer v-model:show="logDrawerOpen" :width="860" placement="right" @after-leave="logTaskId = ''">
             <n-drawer-content :title="t('projectDetail.logDrawerTitle', { version: logTaskVersion })" closable>
                 <WebSocketTerminal v-if="logTaskId" :task-id="logTaskId" :log-path="logTaskLogPath || undefined"
-                    :status="logTaskStatus" />
+                    :status="logTaskStatus" :qrcode-path="logTaskQrcodePath || undefined" />
             </n-drawer-content>
         </n-drawer>
 
@@ -964,7 +976,7 @@ const memberColumns = computed(() => [
                     </div>
 
                     <!-- 构建日志 -->
-                    <div v-if="downloadTask.logPath?.startsWith('/storage')"
+                    <div v-if="downloadTask.logPath"
                         class="flex items-center justify-between p-4 rounded-xl bg-zinc-800/60 border border-white/5">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
@@ -986,7 +998,7 @@ const memberColumns = computed(() => [
                     </div>
 
                     <!-- 无任何产物 -->
-                    <div v-if="!downloadTask.qrcodePath && !downloadTask.artifactPath && !downloadTask.logPath?.startsWith('/storage')"
+                    <div v-if="!downloadTask.qrcodePath && !downloadTask.artifactPath && !downloadTask.logPath"
                         class="text-center py-10 text-zinc-500 italic">
                         {{ t('projectDetail.download.noArtifacts') }}
                     </div>
